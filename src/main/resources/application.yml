@@ -1,0 +1,102 @@
+# OpsPilot 的默认 Spring Boot 配置。
+# ${ENV_NAME:default} 表示优先读取环境变量，未提供时使用冒号后的本地默认值；
+# 因此同一份 JAR 可以在 IDE、Docker Compose 和 Linux systemd 中运行而不修改源码。
+
+spring:
+  application:
+    # 进入日志、Micrometer 标签和 /actuator/info 的稳定应用名。
+    name: opspilot
+  lifecycle:
+    # 优雅停机阶段最多等待 20 秒，让正在处理的 HTTP 请求和事务有机会结束。
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    # 本机默认连接 3306；Compose 通过 DB_URL 覆盖为 mysql:3306（容器 DNS + 容器端口）。
+    url: ${DB_URL:jdbc:mysql://localhost:3306/opspilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:opspilot}
+    # 默认值仅方便本地学习，生产密码必须由 systemd EnvironmentFile 或密钥系统注入。
+    password: ${DB_PASSWORD:opspilot_dev_password}
+  jpa:
+    # 禁止在 Controller 返回 JSON 时继续懒加载数据库；查询必须明确发生在服务事务内。
+    open-in-view: false
+    hibernate:
+      # Hibernate 只验证实体与表结构，不擅自建表/改表；结构演进统一交给 Flyway。
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          # JDBC 写入/读取时间统一按上海时区解释，需与 MySQL 参数和主机时区一起核对。
+          time_zone: Asia/Shanghai
+        # 格式化开发环境 SQL 日志；是否真正打印 SQL 仍由日志级别决定。
+        format_sql: true
+  flyway:
+    # 应用启动时先校验历史迁移，再执行尚未应用的新版本 SQL；失败则拒绝启动。
+    enabled: true
+  jackson:
+    # JSON 响应省略 null 字段，例如处理中订单还没有 completedAt。
+    default-property-inclusion: non_null
+
+server:
+  # 0.0.0.0 让容器/外部反向代理可以访问；只绑定 127.0.0.1 会导致容器外不可达。
+  address: ${SERVER_ADDRESS:0.0.0.0}
+  # 避开常被占用的 8080；容器内外和 Nginx upstream 都统一使用 18080。
+  port: ${SERVER_PORT:18080}
+  # 收到 SIGTERM 时停止接收新请求并等待在途请求完成，而不是立即中断。
+  shutdown: graceful
+  # 信任 Spring 支持的 Forwarded/X-Forwarded-*，使应用知道代理前的协议和客户端地址。
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # 最小化暴露面：只开放健康、信息和 Prometheus 指标，其他管理端点默认不对外。
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # 开启 /health/liveness 与 /health/readiness，供 Docker/systemd/K8s 区分存活和就绪。
+        enabled: true
+      # 不把数据库、磁盘等内部健康细节返回给未认证调用方。
+      show-details: never
+  health:
+    livenessstate:
+      # liveness 只回答“进程是否需要重启”，不要把短暂外部依赖故障随意加入它。
+      enabled: true
+    readinessstate:
+      # readiness 回答“当前是否适合接收流量”，Nginx/Docker 部署门禁使用此状态。
+      enabled: true
+  info:
+    env:
+      # 允许 info.* 配置出现在 /actuator/info。
+      enabled: true
+  metrics:
+    tags:
+      # 公共标签让同一 Prometheus 中的多个应用/环境/版本可筛选比较。
+      application: ${spring.application.name}
+      environment: ${APP_ENV:local}
+      version: ${APP_VERSION:dev}
+    distribution:
+      percentiles-histogram:
+        # 为 HTTP 延迟生成直方图桶，以便 PromQL 计算跨实例 P95/P99。
+        http.server.requests: true
+      slo:
+        # 额外创建与服务目标相关的延迟桶，观察请求落在 100ms/300ms/1s/3s 的比例。
+        http.server.requests: 100ms,300ms,1s,3s
+
+info:
+  app:
+    # 这些构建/环境信息便于确认“线上正在运行哪个版本、处于哪个环境”。
+    name: ${spring.application.name}
+    version: ${APP_VERSION:dev}
+    environment: ${APP_ENV:local}
+
+logging:
+  file:
+    # 留空时只输出控制台，适合 Docker；Linux 原生部署通过 LOG_FILE 写入固定文件供 logrotate。
+    name: ${LOG_FILE:}
+  pattern:
+    # 从 MDC 读取 CorrelationIdFilter 写入的 traceId，并添加到每一条请求日志。
+    correlation: "[%X{traceId:-}] "
+  level:
+    # 业务包保持 INFO，出现问题时可临时通过环境/启动参数调为 DEBUG，排完后恢复。
+    com.opspilot: INFO

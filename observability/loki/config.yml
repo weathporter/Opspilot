@@ -1,0 +1,52 @@
+# 单节点学习环境 Loki 配置：Alloy 推送日志，Loki 在本地文件系统保存索引和块，Grafana 通过 LogQL 查询。
+
+# 关闭多租户鉴权，适合仅绑定 127.0.0.1 的本地实验；生产必须在网关层增加认证/租户隔离。
+auth_enabled: false
+
+server:
+  # HTTP 接收 push、查询和指标请求；gRPC 用于 Loki 组件内部通信。
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  # 单进程实例地址；多节点部署应改为可互通地址和持久化 ring。
+  instance_addr: 127.0.0.1
+  # 所有相对存储目录统一放在 Compose 持久卷 /loki 下。
+  path_prefix: /loki
+  storage:
+    filesystem:
+      # chunks 保存压缩日志数据，rules 为可选规则目录。
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  # 单节点只有一份副本；生产高可用通常使用对象存储并提高副本数。
+  replication_factor: 1
+  ring:
+    kvstore:
+      # 单进程使用内存 ring 即可，重启会重建；集群应使用成员发现/外部 KV。
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      # TSDB 索引格式与 v13 schema 是当前配置组合，日志块仍落本地 filesystem。
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        # 每天一个索引周期，前缀便于在存储目录识别。
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 保留 168 小时即 7 天，与 Prometheus 本地保留期一致，控制学习机磁盘占用。
+  retention_period: 168h
+
+compactor:
+  # Compactor 合并 TSDB 索引并根据 retention 删除过期日志。
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  # 关闭匿名使用情况上报，保持实验环境行为可控。
+  reporting_enabled: false

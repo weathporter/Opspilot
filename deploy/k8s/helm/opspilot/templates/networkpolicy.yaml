@@ -1,0 +1,78 @@
+{{- if .Values.networkPolicy.enabled }}
+# 默认拒绝命名空间内 OpsPilot Pod 的入站流量，再按调用链逐段放行。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-default-deny-ingress
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-web
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: web
+  policyTypes: ["Ingress"]
+  ingress:
+    # Web 是对外边界，只开放 Nginx 8080；具体来源由 Ingress/Service 和集群网络控制。
+    - ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-api-from-web
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: api
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opspilot
+              app.kubernetes.io/component: web
+      ports:
+        - protocol: TCP
+          port: 18080
+{{- if .Values.mysql.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-mysql-from-api
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: database
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opspilot
+              app.kubernetes.io/component: api
+      ports:
+        - protocol: TCP
+          port: 3306
+{{- end }}
+{{- end }}

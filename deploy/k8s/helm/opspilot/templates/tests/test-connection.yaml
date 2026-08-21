@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "opspilot.name" . }}-test-connection
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: release-test
+  annotations:
+    # helm test 会在发布完成后执行这个独立探针；成功后自动清理，失败时保留日志供排查。
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  # 测试 Pod 不需要访问 Kubernetes API，复用 Web 的无 Token ServiceAccount。
+  serviceAccountName: opspilot-web
+  automountServiceAccountToken: false
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: verify-entry
+      image: "{{ .Values.web.image.repository }}:{{ .Values.web.image.tag }}"
+      imagePullPolicy: {{ .Values.web.image.pullPolicy }}
+      # 访问 Web Service 的 /health 会穿过 Nginx，再由它代理 API readiness 和 MySQL 依赖。
+      command:
+        - /bin/sh
+        - -c
+        - wget -qO- --timeout=5 http://opspilot-web:8080/health | grep -q '"status":"UP"'
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

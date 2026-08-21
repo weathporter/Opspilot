@@ -1,0 +1,19 @@
+# 匹配 OpsPilot 应用目录下的所有 .log 文件。
+/var/log/opspilot/*.log {
+    # 每天检查并轮转一次。
+    daily
+    # 保留 14 份历史文件，约等于两周。
+    rotate 14
+    # 历史日志用 gzip 压缩以节省磁盘。
+    compress
+    # 最近一次轮转文件暂不压缩，方便仍持有旧文件句柄的程序继续写入/排查。
+    delaycompress
+    # 文件尚未创建时不报错，避免影响系统 logrotate 定时任务。
+    missingok
+    # 空日志不轮转，减少无意义文件。
+    notifempty
+    # 复制后截断原文件，Java 无需重新打开日志句柄；代价是复制/截断瞬间理论上可能丢少量日志。
+    copytruncate
+    # 以服务用户/组执行轮转，避免新文件权限导致 Java 无法继续写入。
+    su opspilot opspilot
+}

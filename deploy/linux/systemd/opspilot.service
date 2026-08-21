@@ -1,0 +1,56 @@
+# OpsPilot 的 systemd 单元。安装到 /etc/systemd/system/opspilot.service 后需执行 systemctl daemon-reload。
+
+[Unit]
+# systemctl status/journalctl 中显示的服务说明。
+Description=OpsPilot financial transaction service
+# 运维文档提示；此字段不会自动托管网页。
+Documentation=https://localhost/docs/runbooks/linux-deployment
+# Wants 表示希望网络就绪目标被拉起，但其失败不会强制本服务失败。
+Wants=network-online.target
+# After 只规定启动顺序，确保网络就绪目标之后再启动 Java。
+After=network-online.target
+
+[Service]
+# simple 表示 ExecStart 启动的 Java 前台进程就是主进程，systemd 直接跟踪它。
+Type=simple
+# 专用低权限系统账号运行，不使用 root。
+User=opspilot
+Group=opspilot
+# current 是指向版本目录的软链接；发布/回滚通过原子切换它完成。
+WorkingDirectory=/opt/opspilot/current
+# 敏感配置与 JAR 分离，修改密码/端口不需要重新构建代码。
+EnvironmentFile=/etc/opspilot/opspilot.env
+# 启动前确认当前版本 JAR 可读；失败时不会执行 Java，并在 status 中给出明确原因。
+ExecStartPre=/usr/bin/test -r /opt/opspilot/current/opspilot.jar
+ExecStart=/usr/bin/java -jar /opt/opspilot/current/opspilot.jar
+# Java 收到 SIGTERM 后通常返回 143（128+15），把它视为正常停止而非崩溃。
+SuccessExitStatus=143
+# 仅在非正常退出时自动重启；人工 systemctl stop 不会被立即拉起。
+Restart=on-failure
+RestartSec=5s
+# 限制启动和停止等待时间，避免 systemctl 操作无限卡住。
+TimeoutStartSec=90s
+TimeoutStopSec=30s
+# 用 SIGTERM 触发 Spring Boot 优雅停机，超时后 systemd 才强制结束。
+KillSignal=SIGTERM
+# 提高可打开文件数量上限，为并发 socket、日志和数据库连接预留空间。
+LimitNOFILE=65535
+# 新建文件默认去除 other 权限，避免日志/临时产物被无关用户读取。
+UMask=0027
+
+# 禁止服务及其子进程通过 setuid 等方式获得新权限。
+NoNewPrivileges=true
+# 为服务提供独立 /tmp，避免不同服务通过公共临时目录相互干扰。
+PrivateTmp=true
+# 系统目录设为只读；只有 ReadWritePaths 明确列出的路径可写。
+ProtectSystem=strict
+# 禁止访问用户家目录，服务数据统一放在 /opt 与 /var/log。
+ProtectHome=true
+# Java 仅允许写日志目录和共享数据目录。
+ReadWritePaths=/var/log/opspilot /opt/opspilot/shared
+# 阻止创建/使用 setuid、setgid 文件，进一步收紧提权途径。
+RestrictSUIDSGID=true
+
+[Install]
+# systemctl enable 后在常规多用户启动目标中自动启动本服务。
+WantedBy=multi-user.target

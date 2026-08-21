@@ -1,0 +1,20 @@
+OpsPilot 已提交到命名空间 {{ .Release.Namespace }}。
+
+1. 等待业务工作负载完成滚动发布：
+   kubectl -n {{ .Release.Namespace }} rollout status deployment/opspilot-api
+   kubectl -n {{ .Release.Namespace }} rollout status deployment/opspilot-web
+
+2. 本地无 DNS 时先使用端口转发验证：
+   kubectl -n {{ .Release.Namespace }} port-forward service/opspilot-web 18000:8080
+   浏览器访问 http://localhost:18000
+
+3. 使用 Minikube Ingress 时把以下映射加入 hosts：
+   <minikube-ip> {{ .Values.ingress.host }}
+
+4. 检查探针、事件和日志：
+   kubectl -n {{ .Release.Namespace }} get pods,svc,ingress,hpa,pdb
+   kubectl -n {{ .Release.Namespace }} get events --sort-by=.lastTimestamp
+   kubectl -n {{ .Release.Namespace }} logs deployment/opspilot-api --tail=100
+
+注意：mysql.enabled={{ .Values.mysql.enabled }}。
+启用时部署的是学习用单副本 StatefulSet + PVC，不代表生产级 MySQL 高可用。

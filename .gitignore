@@ -1,0 +1,38 @@
+# Maven 编译产物可由源码重建，不进入版本库。
+target/
+
+# IntelliJ IDEA / VS Code 的个人工作区设置不应影响其他开发者。
+.idea/
+.vscode/
+*.iml
+
+# 运行日志可能很大且含业务数据，应由日志系统/归档策略管理。
+*.log
+
+# 本地 .env 可能含数据库和 Grafana 密码，只提交不含秘密的 .env.example。
+.env
+
+# 本地持久化/实验数据不提交；如需保留空目录，可用下一条规则允许 .gitkeep。
+data/
+!.gitkeep
+
+# Node 依赖和 Vite/TypeScript 构建产物均可由锁文件与源码重建。
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+frontend/.vite/
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# 本地包缓存、离线镜像、验收截图和文档构建产物体积较大，均可重新生成。
+.npm-cache/
+dist/
+output/
+tmp/
+
+# 求职材料、内部实施计划与个人设计草稿不属于公开项目源码。
+tools/
+docs/interview/
+docs/superpowers/
+design-system/
+docs/resume-project.md

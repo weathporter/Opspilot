@@ -1,0 +1,12 @@
+# Docker Desktop 的兼容覆盖文件。
+# 原生 Rocky Linux 支持 node-exporter 常用的 rslave 挂载传播，应直接使用 compose.observability.yml；
+# Windows Docker Desktop 不支持该传播选项，因此用结构化 bind mount 覆盖 volumes。
+
+services:
+  node-exporter:
+    volumes:
+      # 将 Docker Desktop Linux VM 的根文件系统只读映射为 /host，供 --path.rootfs=/host 采集。
+      - type: bind
+        source: /
+        target: /host
+        read_only: true

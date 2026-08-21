@@ -1,0 +1,22 @@
+# Alertmanager 负责对 Prometheus 发来的告警分组、去重、静默和通知路由。
+# 第一阶段仅在 Alertmanager 本地 UI 展示，尚未配置邮件/企业微信等外部接收器，避免误发真实通知。
+
+global:
+  # Prometheus 长时间不再发送某告警时，Alertmanager 最多等待 5 分钟后将其判为已恢复。
+  resolve_timeout: 5m
+
+route:
+  # 所有未被子路由匹配的告警进入 local-ui 接收器。
+  receiver: local-ui
+  # 相同告警名、采集 job 和严重等级合并为一组通知，避免实例故障形成通知风暴。
+  group_by: ["alertname", "job", "severity"]
+  # 新组首次出现后等待 10 秒，收集同一时刻触发的相关告警再统一展示/发送。
+  group_wait: 10s
+  # 已发送组中出现新告警时，至少间隔 1 分钟再发送更新。
+  group_interval: 1m
+  # 告警持续未恢复时每 4 小时重复提醒一次。
+  repeat_interval: 4h
+
+receivers:
+  # 空接收器仍会在 Alertmanager UI 保留告警；第二阶段可在此增加 webhook/email_configs。
+  - name: local-ui

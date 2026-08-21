@@ -1,0 +1,43 @@
+# 类生产覆盖示例：业务工作负载运行在 Kubernetes，数据库由企业托管服务提供。
+global:
+  environment: production
+  version: "2026.08.11"
+
+api:
+  image:
+    repository: registry.example.com/platform/opspilot-api
+    tag: "2026.08.11"
+    pullPolicy: IfNotPresent
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 8
+
+web:
+  image:
+    repository: registry.example.com/platform/opspilot-web
+    tag: "2026.08.11"
+  replicaCount: 3
+
+mysql:
+  # 生产环境不把单副本 MySQL StatefulSet 描述为高可用数据库。
+  enabled: false
+
+database:
+  host: mysql-prod.internal.example
+  port: 3306
+  name: opspilot
+  username: opspilot_app
+
+secrets:
+  create: false
+  # 该 Secret 由 Vault、云密钥服务或平台团队预先创建，必须包含 database-password。
+  existingSecret: opspilot-production-database
+
+ingress:
+  host: opspilot.example.com
+  tls:
+    - secretName: opspilot-tls
+      hosts:
+        - opspilot.example.com

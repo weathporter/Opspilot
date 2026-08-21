@@ -1,0 +1,20 @@
+# 仅在 @ActiveProfiles("test") 时叠加到默认配置上。
+# 数据库 URL/凭据由 Testcontainers 的 @ServiceConnection 动态提供，无需写死端口。
+
+spring:
+  jpa:
+    hibernate:
+      # 测试也只校验结构，确保 Flyway 脚本才是数据库结构的唯一事实来源。
+      ddl-auto: validate
+  flyway:
+    # 每个测试数据库启动时执行真实迁移，提前发现 SQL 与实体不一致。
+    enabled: true
+  main:
+    # 关闭启动横幅，减少测试输出噪声，让失败堆栈更醒目。
+    banner-mode: off
+
+logging:
+  level:
+    # 框架默认只输出 WARN；业务包保留 INFO，必要时可临时改为 DEBUG 排查测试。
+    root: WARN
+    com.opspilot: INFO

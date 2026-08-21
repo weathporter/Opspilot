@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: opspilot
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - storage.yaml
+  - mysql.yaml
+  - api.yaml
+  - web.yaml
+  - pdb.yaml
+  - networkpolicy.yaml

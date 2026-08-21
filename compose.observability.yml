@@ -1,0 +1,159 @@
+# 可观测性覆盖栈，与 compose.yml 叠加启动：
+# Prometheus 采指标 -> Alertmanager 管告警；Alloy 采容器日志 -> Loki 存日志；Grafana 统一展示；
+# node-exporter 采主机指标；cAdvisor 采容器资源指标。
+
+services:
+  prometheus:
+    # 固定版本保证配置语法和查询行为可重复。
+    image: prom/prometheus:v3.13.0
+    command:
+      # 主配置包含抓取目标和 Alertmanager 地址。
+      - --config.file=/etc/prometheus/prometheus.yml
+      # 时序数据库写入持久卷挂载点。
+      - --storage.tsdb.path=/prometheus
+      # 学习环境只保留 7 天，控制磁盘占用；生产需按容量和合规要求规划。
+      - --storage.tsdb.retention.time=7d
+      # 开启 /-/reload，允许受控地热加载配置；端口只绑定本机降低暴露风险。
+      - --web.enable-lifecycle
+    ports:
+      - "127.0.0.1:19090:9090"
+    volumes:
+      # 配置和规则只读，TSDB 数据卷可写且跨容器重建保留。
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    networks:
+      - opspilot
+    depends_on:
+      # Compose 只负责启动顺序：应用需 healthy，Alertmanager 进程已启动；运行期状态由 Prometheus 自己监控。
+      app:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+    restart: unless-stopped
+
+  alertmanager:
+    # 接收 Prometheus 告警，完成分组、抑制、静默和通知路由。
+    image: prom/alertmanager:v0.32.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      # 静默记录等运行状态持久化位置。
+      - --storage.path=/alertmanager
+    ports:
+      - "127.0.0.1:19093:9093"
+    volumes:
+      - ./observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - opspilot
+    restart: unless-stopped
+
+  grafana:
+    # Grafana 读取 Prometheus/Loki，提供统一指标看板和日志探索界面。
+    image: grafana/grafana:13.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # 本地可用默认值，正式环境必须在 .env/密钥系统中覆盖。
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-opspilot_grafana_dev_password}
+      # 禁止访客自行注册和匿名访问，减少误暴露。
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:13000:3000"
+    volumes:
+      # grafana_data 保存用户、会话等状态；provisioning/dashboards 让数据源和看板随代码版本化。
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - opspilot
+    depends_on:
+      # 这里只保证容器先启动；Grafana 数据源本身仍应配置健康探测和排错手册。
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+  loki:
+    # Loki 以标签索引日志流，以对象/文件块保存日志正文，供 Grafana LogQL 查询。
+    image: grafana/loki:3.7.0
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "127.0.0.1:13100:3100"
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    networks:
+      - opspilot
+    restart: unless-stopped
+
+  alloy:
+    # Grafana Alloy 发现 Docker 容器、读取其 stdout/stderr 日志并推送给 Loki。
+    image: grafana/alloy:v1.18.0
+    command:
+      - run
+      # 本地 HTTP 界面展示组件图和调试状态；只通过主机回环端口暴露。
+      - --server.http.listen-addr=0.0.0.0:12345
+      # 保存日志读取位置，重启后从上次位置继续，降低重复/漏采风险。
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:12345:12345"
+    volumes:
+      - ./observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # 只读挂载 Docker socket 用于容器发现和日志读取；它仍是高权限接口，生产需严格控制。
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    networks:
+      - opspilot
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  node-exporter:
+    # 采集 Linux 主机 CPU、内存、磁盘、网络等指标；Docker Desktop 下实际反映 Linux VM。
+    image: prom/node-exporter:v1.11.1
+    command:
+      # 容器内 /host 映射到宿主根目录，要求 exporter 用它作为 rootfs 前缀。
+      - --path.rootfs=/host
+    ports:
+      - "127.0.0.1:19100:9100"
+    volumes:
+      # rslave 让后续出现的新挂载点也传播进容器；Windows Docker Desktop 用额外覆盖文件替换该写法。
+      - /:/host:ro,rslave
+    networks:
+      - opspilot
+    # 使用宿主 PID 命名空间以获取更完整主机视角；这也意味着权限边界更宽，需固定可信镜像。
+    pid: host
+    restart: unless-stopped
+
+  cadvisor:
+    # 采集每个容器的 CPU、内存、网络和文件系统指标，补充 node-exporter 的主机总览。
+    image: ghcr.io/google/cadvisor:0.55.1
+    ports:
+      - "127.0.0.1:18081:8080"
+    volumes:
+      # 只读读取宿主根文件系统、运行时目录、cgroup/sysfs 和 Docker 数据目录。
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    networks:
+      - opspilot
+    # cAdvisor 深入读取内核/cgroup 信息需要较高权限；生产应评估风险并限制外部访问。
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    restart: unless-stopped
+
+volumes:
+  # 以下命名卷分别持久化时序数据、静默状态、Grafana 状态、日志块和 Alloy 读取位置。
+  prometheus_data:
+    name: opspilot_prometheus_data
+  alertmanager_data:
+    name: opspilot_alertmanager_data
+  grafana_data:
+    name: opspilot_grafana_data
+  loki_data:
+    name: opspilot_loki_data
+  alloy_data:
+    name: opspilot_alloy_data

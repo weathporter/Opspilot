@@ -1,0 +1,94 @@
+# 默认值面向本地 Minikube 演示，确保首次部署可以完整跑通。
+# 生产环境必须通过 values-production.example.yaml 关闭内置单副本 MySQL，并使用外部 Secret。
+global:
+  environment: kubernetes-local
+  version: "0.1.1"
+
+api:
+  replicaCount: 2
+  image:
+    repository: opspilot-api
+    tag: "0.1.1"
+    pullPolicy: IfNotPresent
+  service:
+    port: 18080
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+
+web:
+  replicaCount: 2
+  image:
+    repository: opspilot-web
+    tag: "0.1.1"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 300m
+      memory: 192Mi
+
+mysql:
+  # 单副本 StatefulSet 只用于学习 PVC、备份和恢复，不宣称数据库高可用。
+  enabled: true
+  image:
+    repository: mysql
+    tag: "8.4"
+    pullPolicy: IfNotPresent
+  database: opspilot
+  username: opspilot
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+database:
+  # 关闭 mysql.enabled 后，API 使用此地址连接企业外部数据库。
+  host: mysql
+  port: 3306
+  name: opspilot
+  username: opspilot
+
+secrets:
+  # 本地默认值仅用于可复现演示。生产环境应设置 create=false 并引用密钥平台创建的 Secret。
+  create: true
+  existingSecret: ""
+  databasePassword: "opspilot_local_change_me"
+  mysqlRootPassword: "opspilot_root_local_change_me"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: opspilot.local
+  annotations: {}
+  tls: []
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+
+operatorRbac:
+  # 创建最小权限的诊断 ServiceAccount；不授予读取 Secret 或修改数据库工作负载的权限。
+  enabled: true

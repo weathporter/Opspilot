@@ -1,0 +1,82 @@
+# OpsPilot 第一阶段告警规则。
+# expr 决定“什么算异常”，for 决定“异常持续多久才触发”，labels 决定路由/等级，annotations 指导人工处置。
+
+groups:
+  # 应用可用性、错误、延迟与 JVM 容量规则放在同一组，由 Prometheus 按 evaluation_interval 周期计算。
+  - name: opspilot-availability
+    rules:
+      - alert: OpsPilotDown
+        # up 是 Prometheus 为每个抓取目标自动生成的指标：抓取成功为 1，失败为 0。
+        expr: up{job="opspilot"} == 0
+        # 连续 1 分钟失败才 firing，过滤单次网络抖动/应用短暂重启。
+        for: 1m
+        labels:
+          # critical 表示核心服务不可观测/不可用，应优先处理。
+          severity: critical
+        annotations:
+          summary: "OpsPilot实例不可用"
+          description: "Prometheus连续1分钟无法抓取OpsPilot指标。"
+
+      - alert: OpsPilotHighErrorRate
+        expr: |
+          # 分子：过去 5 分钟所有 HTTP 5xx 每秒速率之和；分母：全部 HTTP 请求每秒速率之和。
+          # clamp_min 把分母下限设为 0.001，避免零流量时除以零得到 NaN/Inf。
+          sum(rate(http_server_requests_seconds_count{application="opspilot",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="opspilot"}[5m])), 0.001)
+          > 0.05
+        # 5% 以上持续 5 分钟才告警，避免低流量下偶发单个 500 立即制造噪声。
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpsPilot 5xx错误率超过5%"
+          description: "先按请求ID检查应用日志，再检查数据库连接和最近发布。"
+
+      - alert: OpsPilotHighP95Latency
+        expr: |
+          # rate 计算每个延迟桶近 5 分钟增长速率，sum by(le) 合并实例，histogram_quantile 求全局 P95。
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{application="opspilot"}[5m]))
+          ) > 1
+        # P95 超过 1 秒持续 5 分钟才视为稳定性能退化。
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpsPilot P95延迟超过1秒"
+          description: "检查JVM、MySQL连接池、慢SQL和主机资源。"
+
+      - alert: OpsPilotJvmHeapHigh
+        expr: |
+          # 所有 heap 内存池已用字节 / 最大字节；clamp_min 防止最大值缺失或为零时除零。
+          sum(jvm_memory_used_bytes{application="opspilot",area="heap"})
+          /
+          clamp_min(sum(jvm_memory_max_bytes{application="opspilot",area="heap"}), 1)
+          > 0.85
+        # 高使用率持续 10 分钟才告警，允许 GC 周期内短时冲高。
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpsPilot JVM堆使用率超过85%"
+          description: "观察GC趋势，确认是否存在持续增长或内存泄漏。"
+
+  # 主机容量与应用规则分组，后续可独立设置计算周期或通知路由。
+  - name: linux-capacity
+    rules:
+      - alert: HostDiskSpaceLow
+        expr: |
+          # 可用字节 / 总字节小于 10%；排除 tmpfs 和容器 overlay，避免重复/无意义文件系统告警。
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          < 0.10
+        # 持续 10 分钟过滤短时文件生成，仍给运维留出清理/扩容窗口。
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "主机磁盘可用空间低于10%"
+          description: "检查日志、容器层和数据库文件，禁止直接删除未知文件。"

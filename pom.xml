@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven 项目总清单：定义 Java/Spring Boot 版本、第三方依赖、测试方式和打包插件。
+  常用命令：mvn test 运行测试；mvn package 生成可执行 JAR；mvn dependency:tree 排查依赖冲突。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <!-- POM 模型版本，不是本项目版本。 -->
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Spring Boot 父 POM 统一管理常见依赖/插件的兼容版本和 Maven 默认配置。
+      relativePath 为空表示只从 Maven 仓库解析，不寻找本地父 pom.xml。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.4</version>
+        <relativePath/>
+    </parent>
+
+    <!-- Maven 坐标唯一标识构建产物，最终 JAR 名称来自 artifactId 和 version。 -->
+    <groupId>com.opspilot</groupId>
+    <artifactId>opspilot</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <name>OpsPilot</name>
+    <description>面向金融业务场景的云原生部署、监控与故障处置实践平台</description>
+
+    <properties>
+        <!-- Spring Boot 3.x 的基线是 Java 17；编译、运行和容器 JRE 必须保持兼容。 -->
+        <java.version>17</java.version>
+        <!-- Docker Engine 29 移除了旧 API 兼容性，测试进程显式使用当前 Testcontainers 可兼容版本。 -->
+        <docker.api.version>1.44</docker.api.version>
+    </properties>
+
+    <dependencies>
+        <!-- Spring MVC + 内嵌 Tomcat + Jackson：提供 REST API 和 JSON 序列化。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Jakarta Bean Validation：执行 @NotBlank、@Pattern、@DecimalMin 等边界校验。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Spring Data JPA + Hibernate + 事务管理：映射实体并访问 MySQL。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- Actuator：暴露健康检查、应用信息和运行指标端点。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- 把 Micrometer 指标转换为 Prometheus 文本格式，供 /actuator/prometheus 抓取。 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- Flyway 核心迁移引擎：启动时按版本执行 db/migration 下的 SQL。 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!-- Flyway 10+ 把具体数据库支持拆包，MySQL 项目必须显式加入该模块。 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
+        <!-- MySQL JDBC 驱动只在运行/测试时需要，不参与业务源码编译。 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- JUnit 5、AssertJ、MockMvc、Mockito 等 Spring Boot 测试工具集合。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- 让 Testcontainers 容器连接信息可通过 @ServiceConnection 自动注入 Spring。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers 与 JUnit 5 生命周期集成，识别 @Testcontainers/@Container。 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- 提供预配置的 MySQLContainer，集成测试使用真实 MySQL 而不是 H2。 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 把普通 JAR 重打包为包含依赖和启动器的可执行 Spring Boot JAR。 -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- Surefire 负责 test 阶段；这里把 Docker API 版本传给测试 JVM。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

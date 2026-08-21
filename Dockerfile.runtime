@@ -1,0 +1,30 @@
+# 本地快速运行镜像：复用主机已由 Maven 生成的 JAR，不在 Docker 内再次编译。
+# scripts/start-local.ps1 先执行 mvn package，再让 compose.local.yml 选择本文件。
+FROM eclipse-temurin:17-jre-alpine
+
+# 镜像版本作为 OCI 标签，便于 docker inspect 确认实际部署版本。
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.title="OpsPilot" \
+      org.opencontainers.image.description="Cloud-native operations practice for a financial transaction service" \
+      org.opencontainers.image.version="${APP_VERSION}"
+
+WORKDIR /app
+
+# 与完整 Dockerfile 使用同一个固定的非 root UID/GID，保持权限行为一致。
+RUN addgroup -S -g 10001 opspilot \
+    && adduser -S -D -H -u 10001 -G opspilot opspilot
+
+# JAR 必须先由主机 mvn package 生成；.dockerignore 已允许 target/opspilot-*.jar 进入构建上下文。
+COPY --chown=opspilot:opspilot target/opspilot-*.jar /app/app.jar
+
+# 只使用容器内存的约 75% 作为 Java 堆等内存预算，并在 OOM 后退出供编排系统恢复。
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+USER 10001:10001
+EXPOSE 18080
+
+# readiness 同时验证 Web 进程和应用依赖已达到可接流量状态。
+HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:18080/actuator/health/readiness || exit 1
+
+# 不经过 shell，确保 Java 正确接收停止信号。
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

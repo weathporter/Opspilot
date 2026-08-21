@@ -1,0 +1,55 @@
+// Alloy 日志流水线：Docker 服务发现 -> 元数据重标记 -> 读取容器 stdout/stderr -> 推送 Loki。
+
+logging {
+  // Alloy 自身使用 info 级别和 logfmt，既保留组件状态又便于机器解析。
+  level  = "info"
+  format = "logfmt"
+}
+
+discovery.docker "local" {
+  // 通过只读挂载的 Docker Unix socket 查询容器元数据和日志流。
+  host             = "unix:///var/run/docker.sock"
+  // 每 5 秒发现一次新增、重建或删除的容器。
+  refresh_interval = "5s"
+
+  filter {
+    // 只采 Compose project=opspilot 的容器，避免把本机其他项目日志混入同一 Loki。
+    name   = "label"
+    values = ["com.docker.compose.project=opspilot"]
+  }
+}
+
+discovery.relabel "opspilot" {
+  // 接收上一组件输出的内部 Docker 元数据标签。
+  targets = discovery.docker.local.targets
+
+  rule {
+    // Docker 容器名通常以 / 开头；正则捕获后去掉斜杠并写为可查询的 container 标签。
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    // 把 Compose 服务名（app/mysql/nginx 等）转成低基数 service 标签，Grafana 可用 {service="app"} 查询。
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "opspilot" {
+  // 从同一个 Docker socket 读取发现目标的 JSON log driver 日志。
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.opspilot.output
+  // job=docker 标识采集来源；container/service 标签来自 relabel 输出。
+  labels     = { job = "docker" }
+  // 日志事件转发到下面名为 local 的 Loki 写入组件 receiver。
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    // 使用 Compose 服务名和容器端口，通过内部网络调用 Loki push API。
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

@@ -1,0 +1,19 @@
+# Docker 构建上下文排除清单：减少传给 Docker daemon 的内容，提升构建速度并避免泄露本地文件。
+
+# 默认排除 Maven target 的全部产物，随后只重新允许 runtime 镜像所需的可执行 JAR。
+target/*
+!target/opspilot-*.jar
+
+# 前端依赖和本地构建缓存体积很大；运行时镜像只复制 frontend/dist。
+frontend/node_modules
+frontend/.vite
+
+# 版本控制、IDE 元数据不属于镜像运行内容。
+.git
+.idea
+.vscode
+*.iml
+
+# 日志可能含业务信息；.env 可能含密码，绝不能被 COPY 进入镜像构建上下文。
+*.log
+.env

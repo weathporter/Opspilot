@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: opspilot-mysql-pv
+  labels:
+    app.kubernetes.io/name: opspilot
+    app.kubernetes.io/component: database
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: opspilot-local
+  local:
+    path: /data/opspilot/mysql
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - k8s-node1
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opspilot-mysql-data
+  labels:
+    app.kubernetes.io/name: opspilot
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  storageClassName: opspilot-local
+  volumeName: opspilot-mysql-pv
+  resources:
+    requests:
+      storage: 5Gi

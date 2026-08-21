@@ -1,0 +1,97 @@
+# OpsPilot 完整本地业务拓扑：浏览器 -> 非 root Nginx/React -> Spring Boot -> MySQL。
+# 监控栈由 compose.observability.yml 叠加，业务与观测边界保持清晰。
+name: opspilot
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: opspilot
+      MYSQL_USER: opspilot
+      MYSQL_PASSWORD: ${DB_PASSWORD:-opspilot_dev_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-opspilot_root_dev_password}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    ports:
+      # 主机使用 3307 避开常见的本地 MySQL 3306；容器间仍访问 mysql:3306。
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - opspilot
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+    image: opspilot-api:${APP_VERSION:-dev}
+    environment:
+      APP_ENV: compose
+      APP_VERSION: ${APP_VERSION:-dev}
+      DB_URL: jdbc:mysql://mysql:3306/opspilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      DB_USERNAME: opspilot
+      DB_PASSWORD: ${DB_PASSWORD:-opspilot_dev_password}
+      SERVER_ADDRESS: 0.0.0.0
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:18080:18080"
+    networks:
+      opspilot:
+        # 前端镜像和 Kubernetes 都通过 opspilot-backend 解析后端，配置完全复用。
+        aliases:
+          - opspilot-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    image: opspilot-web:${APP_VERSION:-dev}
+    ports:
+      # 用户只需记住 18000，避免常见 80/8080 端口冲突。
+      - "18000:8080"
+    networks:
+      - opspilot
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m,mode=0777
+      - /var/run:size=8m,mode=0777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+networks:
+  opspilot:
+    name: opspilot_network
+
+volumes:
+  mysql_data:
+    name: opspilot_mysql_data

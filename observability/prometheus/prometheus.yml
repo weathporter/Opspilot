@@ -1,0 +1,47 @@
+# Prometheus 主配置：定义采集频率、告警去向、规则文件和所有指标目标。
+
+global:
+  # 每 15 秒主动抓取一次目标；越短越实时，但目标和 Prometheus 的 CPU/网络/存储开销越大。
+  scrape_interval: 15s
+  # 每 15 秒计算一次 recording/alerting rules，与抓取周期一致便于理解告警延迟。
+  evaluation_interval: 15s
+  external_labels:
+    # 外部标签随告警/远程写出，用于区分同名服务来自哪个环境。
+    environment: compose
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        # 使用 Compose 服务名 DNS 和容器端口，不使用主机映射端口 19093。
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  # 容器只读挂载 rules 目录；匹配文件会在 Prometheus 启动/热加载时解析。
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  # 自监控 Prometheus 自身的抓取、规则计算、TSDB 和 Go 运行时指标。
+  - job_name: prometheus
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # Spring Boot 通过 Actuator + Micrometer 输出 JVM、HTTP、连接池等指标。
+  - job_name: opspilot
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:18080"]
+
+  # node-exporter 反映 Linux 主机 CPU、内存、磁盘、文件系统和网络状态。
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # cAdvisor 反映每个 Docker 容器的 CPU、内存、网络与文件系统资源用量。
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # 抓取 Loki 自身运行指标；这不是日志正文，日志正文由 Alloy push 到 Loki。
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]

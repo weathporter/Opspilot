@@ -1,0 +1,206 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "读取 Prometheus 自动生成的 up{job=\"opspilot\"}：最近一次成功抓取应用指标为 1/UP，抓取失败为 0/DOWN。它证明 Prometheus 到应用指标端点可达，不等同于全部业务场景都正确。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "options": {
+                "0": {"color": "red", "text": "DOWN"},
+                "1": {"color": "green", "text": "UP"}
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "up{job=\"opspilot\"}", "refId": "A"}
+      ],
+      "title": "应用状态",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "对近 1 分钟 http_server_requests_seconds_count 求 rate 并汇总，得到当前每秒业务请求数；排除 /actuator 探针和指标抓取，避免监控流量掩盖真实业务流量。",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps"},
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 6, "x": 4, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{application=\"opspilot\",uri!~\"/actuator.*\"}[1m]))",
+          "refId": "A"
+        }
+      ],
+      "title": "每秒业务请求",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "所有 JVM heap 内存池的 used 总和除以 max 总和，显示为 0~1 的百分比。短时升高可能只是 GC 周期，持续上升且回收后不下降才需要重点排查。",
+      "fieldConfig": {
+        "defaults": {"max": 1, "min": 0, "unit": "percentunit"},
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 7, "x": 10, "y": 0},
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{application=\"opspilot\",area=\"heap\"}) / clamp_min(sum(jvm_memory_max_bytes{application=\"opspilot\",area=\"heap\"}), 1)",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM堆使用率",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "根据近 5 分钟 HTTP 延迟直方图桶计算 P95：约 95% 请求耗时不超过该值。先 sum by(le) 合并实例再求 quantile，才能得到全局分位数。",
+      "fieldConfig": {
+        "defaults": {"unit": "s"},
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 7, "x": 17, "y": 0},
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{application=\"opspilot\"}[5m])))",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP P95延迟",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "按 URI 和 HTTP 状态码拆分每秒请求趋势，并排除 Actuator。用于判断流量变化、错误集中在哪个接口，以及故障与发布时点是否重合。",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "id": 5,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{application=\"opspilot\",uri!~\"/actuator.*\"}[1m]))",
+          "legendFormat": "{{status}} {{uri}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP请求趋势",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "按 heap/nonheap 区域汇总 JVM 已用内存字节。结合堆使用率、GC 和容器内存限制观察；非堆包含元空间、代码缓存等，不能只关注 Java 堆。",
+      "fieldConfig": {
+        "defaults": {"unit": "bytes"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "id": 6,
+      "options": {
+        "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true},
+        "tooltip": {"mode": "multi", "sort": "desc"}
+      },
+      "targets": [
+        {
+          "expr": "sum by (area) (jvm_memory_used_bytes{application=\"opspilot\"})",
+          "legendFormat": "used {{area}}",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM内存",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "description": "LogQL 标签选择器 {service=\"app\"} 展示 Alloy 从 Spring Boot 容器 stdout/stderr 采集的日志。拿到 API 响应 X-Request-ID 后，可在查询后追加 |= \"请求ID\" 精确关联一次请求。",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 13},
+      "id": 7,
+      "options": {
+        "dedupStrategy": "none",
+        "enableInfiniteScrolling": false,
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "expr": "{service=\"app\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "OpsPilot应用日志",
+      "type": "logs"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["opspilot", "phase-1"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "description": "OpsPilot 第一阶段可观测性入口：同时展示可用性、业务流量、HTTP 延迟、JVM 内存和应用日志。指标负责发现趋势/异常，日志负责按 X-Request-ID 下钻原因；告警阈值以 Prometheus rules 为准。",
+  "title": "OpsPilot 第一阶段总览",
+  "uid": "opspilot-overview",
+  "version": 1
+}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: opspilot
+description: OpsPilot 金融业务运维驾驶舱的 Kubernetes 应用交付 Chart
+type: application
+version: 0.1.1
+appVersion: "0.1.1"
+kubeVersion: ">=1.27.0-0"
+annotations:
+  # 说明 Chart 面向教学、演示和单团队部署；生产数据库建议切换为外部托管实例。
+  opspilot.io/scope: "resume-demo-and-production-shaped"

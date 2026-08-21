@@ -1,0 +1,9 @@
+# 本地开发覆盖文件：复用主机已构建的后端 JAR 和前端 dist，减少镜像源与重复依赖下载。
+# 使用前必须先执行 mvn package 与 frontend/npm run build；start-local.ps1 会自动完成。
+services:
+  app:
+    build:
+      dockerfile: Dockerfile.runtime
+  nginx:
+    build:
+      dockerfile: frontend/Dockerfile.runtime

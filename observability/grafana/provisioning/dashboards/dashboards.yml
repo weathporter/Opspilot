@@ -1,0 +1,19 @@
+# Grafana 看板文件供应器：定期从只读目录加载 JSON，看板随代码和部署一起版本化。
+apiVersion: 1
+
+providers:
+  - name: OpsPilot
+    # 加载到默认组织。
+    orgId: 1
+    # Grafana 左侧导航中统一放入 OpsPilot 文件夹。
+    folder: OpsPilot
+    type: file
+    # 禁止在 UI 删除由文件管理的看板。
+    disableDeletion: true
+    # 禁止 UI 保存覆盖；改动应修改 JSON、评审并重新部署。
+    allowUiUpdates: false
+    # 每 30 秒扫描一次目录，开发时修改 JSON 后无需重启 Grafana。
+    updateIntervalSeconds: 30
+    options:
+      # 与 compose.observability.yml 中 dashboard 只读挂载路径一致。
+      path: /var/lib/grafana/dashboards
