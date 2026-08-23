@@ -20,6 +20,11 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $projectRoot
 
+# .env 只保存在开发者本机并被 Git 忽略；缺失时立即停止，避免容器以空密码或猜测密码启动。
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot '.env'))) {
+    throw 'Missing .env. Copy .env.example to .env and set local passwords before starting.'
+}
+
 # 不硬编码 Docker Desktop named pipe，而是读取当前 docker context 的真实端点。
 # Testcontainers 和 Maven 子进程也会继承 DOCKER_HOST，从而连接同一个 Linux Engine。
 $dockerHostValue = docker context inspect --format '{{.Endpoints.docker.Host}}'
@@ -29,11 +34,11 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($dockerHostValue)) {
 $env:DOCKER_HOST = $dockerHostValue.Trim()
 
 if ($RunTests) {
-    Write-Host '[1/4] Running MySQL Testcontainers tests'
+    Write-Host '[1/5] Running MySQL Testcontainers tests'
     # -B 使用批处理模式，-ntp 关闭下载进度条，日志更适合保存和排查。
     mvn -B -ntp test
 } else {
-    Write-Host '[1/4] Packaging JAR with tests skipped; use -RunTests for a full verification'
+    Write-Host '[1/5] Packaging JAR with tests skipped; use -RunTests for a full verification'
     # Dockerfile.runtime 需要主机 target 下已有最新 JAR。
     mvn -B -ntp -DskipTests package
 }
@@ -47,7 +52,8 @@ Push-Location (Join-Path $projectRoot 'frontend')
 try {
     # 首次运行使用锁文件还原依赖；后续直接复用 node_modules，缩短本地启动时间。
     if (-not (Test-Path 'node_modules')) {
-        npm ci
+        # 忽略第三方安装脚本，降低依赖安装阶段执行不受信任代码的风险。
+        npm ci --ignore-scripts
         if ($LASTEXITCODE -ne 0) {
             throw 'Frontend dependency installation failed.'
         }
@@ -99,7 +105,38 @@ if (-not $healthy) {
     throw 'Nginx entry did not become healthy within 90 seconds.'
 }
 
-Write-Host '[5/5] Container status'
+if ($WithObservability) {
+    Write-Host '[5/6] Waiting for every observability entry to become ready'
+
+    # 观测容器的“进程已启动”早于“查询接口可用”；逐个等待 2xx，避免过早交付打不开的链接。
+    $observabilityEndpoints = [ordered]@{
+        Grafana = 'http://localhost:13000/api/health'
+        Prometheus = 'http://localhost:19090/-/ready'
+        Alertmanager = 'http://localhost:19093/-/ready'
+        Loki = 'http://localhost:13100/ready'
+    }
+    foreach ($entry in $observabilityEndpoints.GetEnumerator()) {
+        $endpointReady = $false
+        # 最多等待 60 秒；只对启动期连接拒绝或非 2xx 重试，不吞掉最终失败。
+        for ($attempt = 1; $attempt -le 20; $attempt++) {
+            try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri $entry.Value -TimeoutSec 3
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+                    $endpointReady = $true
+                    break
+                }
+            } catch {
+                Start-Sleep -Seconds 3
+            }
+        }
+        if (-not $endpointReady) {
+            docker compose @composeFiles ps
+            throw "$($entry.Key) did not become ready within 60 seconds: $($entry.Value)"
+        }
+    }
+}
+
+Write-Host $(if ($WithObservability) { '[6/6] Container status' } else { '[5/5] Container status' })
 docker compose @composeFiles ps
 Write-Host 'Nginx entry: http://localhost:18000/health'
 if ($WithObservability) {

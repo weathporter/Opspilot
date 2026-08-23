@@ -1,6 +1,6 @@
-# OpsPilot 完整本地业务拓扑：浏览器 -> 非 root Nginx/React -> Spring Boot -> MySQL。
+# NorthLedger 完整本地业务拓扑：浏览器 -> 非 root Nginx/React -> Spring Boot -> MySQL。
 # 监控栈由 compose.observability.yml 叠加，业务与观测边界保持清晰。
-name: opspilot
+# Compose 项目标识沿用仓库目录名，以便原地升级并继续挂载既有持久化数据卷。
 
 services:
   mysql:
@@ -8,8 +8,9 @@ services:
     environment:
       MYSQL_DATABASE: opspilot
       MYSQL_USER: opspilot
-      MYSQL_PASSWORD: ${DB_PASSWORD:-opspilot_dev_password}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-opspilot_root_dev_password}
+      # 没有显式密钥就拒绝启动，避免把仓库默认密码误带入长期环境。
+      MYSQL_PASSWORD: ${DB_PASSWORD:?copy .env.example to .env and set DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
       TZ: Asia/Shanghai
     command:
       - --character-set-server=utf8mb4
@@ -34,13 +35,18 @@ services:
       context: .
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-    image: opspilot-api:${APP_VERSION:-dev}
+    image: northledger-api:${APP_VERSION:-dev}
     environment:
       APP_ENV: compose
       APP_VERSION: ${APP_VERSION:-dev}
       DB_URL: jdbc:mysql://mysql:3306/opspilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       DB_USERNAME: opspilot
-      DB_PASSWORD: ${DB_PASSWORD:-opspilot_dev_password}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:?set BOOTSTRAP_ADMIN_USERNAME in .env}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?set BOOTSTRAP_ADMIN_PASSWORD in .env}
+      BOOTSTRAP_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:-System Administrator}
+      # Docker 标准输出使用 ECS JSON，Loki 可以按 event/outcome/trace.id 等字段查询。
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
       SERVER_ADDRESS: 0.0.0.0
       TZ: Asia/Shanghai
     ports:
@@ -65,7 +71,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    image: opspilot-web:${APP_VERSION:-dev}
+    image: northledger-web:${APP_VERSION:-dev}
     ports:
       # 用户只需记住 18000，避免常见 80/8080 端口冲突。
       - "18000:8080"

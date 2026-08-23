@@ -18,7 +18,7 @@ FROM eclipse-temurin:17-jre-alpine
 
 # 构建参数用于写入 OCI 镜像元数据，可通过 docker build --build-arg APP_VERSION=... 覆盖。
 ARG APP_VERSION=dev
-LABEL org.opencontainers.image.title="OpsPilot" \
+LABEL org.opencontainers.image.title="NorthLedger" \
       org.opencontainers.image.description="Cloud-native operations practice for a financial transaction service" \
       org.opencontainers.image.version="${APP_VERSION}"
 
@@ -29,7 +29,7 @@ RUN addgroup -S -g 10001 opspilot \
     && adduser -S -D -H -u 10001 -G opspilot opspilot
 
 # 从 builder 阶段只复制最终 JAR，并在复制时设置归属，避免额外 chown 镜像层。
-COPY --from=builder --chown=opspilot:opspilot /workspace/target/opspilot-*.jar /app/app.jar
+COPY --from=builder --chown=opspilot:opspilot /workspace/target/northledger-*.jar /app/app.jar
 
 # MaxRAMPercentage 让 JVM 感知容器内存上限；OOM 时退出进程，交给 Docker 重启而不是带病运行。
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"

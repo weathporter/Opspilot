@@ -1,12 +1,13 @@
-# Rocky Linux原生部署Runbook
+# Rocky Linux 原生部署 Runbook
 
-目标：Spring Boot由systemd管理并只监听本机18080，Nginx监听80作为唯一入口。建议先在虚拟机或云实验机操作，不要直接用于真实生产主机。
+目标：Spring Boot 由 systemd 管理并只监听本机 18080，Nginx 在 80 端口同时提供 React 门户和 `/api` 反向代理。JAR 与前端静态文件进入同一个不可变版本目录，发布和回滚始终保持前后端一致。建议先在虚拟机或云实验机操作，不要直接用于真实生产主机。
 
 ## 1. 开发机完成构建
 
 ```bash
 bash scripts/build.sh
-sha256sum target/opspilot-0.1.0-SNAPSHOT.jar
+sha256sum target/northledger-0.2.0.jar
+sha256sum frontend/dist/index.html
 ```
 
 企业环境通常在构建节点生成制品，生产主机只运行JRE，不安装Maven和完整源代码。
@@ -15,7 +16,8 @@ sha256sum target/opspilot-0.1.0-SNAPSHOT.jar
 
 ```bash
 scp -r deploy scripts linux-user@SERVER_IP:/tmp/opspilot-bootstrap/
-scp target/opspilot-0.1.0-SNAPSHOT.jar linux-user@SERVER_IP:/tmp/opspilot.jar
+scp target/northledger-0.2.0.jar linux-user@SERVER_IP:/tmp/northledger.jar
+scp -r frontend/dist linux-user@SERVER_IP:/tmp/northledger-web
 ```
 
 ## 3. 初始化Rocky Linux
@@ -57,15 +59,16 @@ sudo chown root:opspilot /etc/opspilot/opspilot.env
 sudo chmod 0640 /etc/opspilot/opspilot.env
 ```
 
-至少替换`DB_PASSWORD=CHANGE_ME`，并确认`DB_URL`与数据库位置一致。不要把真实密码放入仓库或命令历史。
+至少替换 `DB_PASSWORD=CHANGE_ME`，并为全新数据库填写 `BOOTSTRAP_ADMIN_USERNAME`、`BOOTSTRAP_ADMIN_PASSWORD`，确认 `DB_URL` 与数据库位置一致。不要把真实密码放入仓库或命令历史。
 
 ## 6. 首次发布
 
 ```bash
 cd /tmp/opspilot-bootstrap
 sudo bash scripts/deploy.sh \
-  --artifact /tmp/opspilot.jar \
-  --version 0.1.0
+  --artifact /tmp/northledger.jar \
+  --web-dist /tmp/northledger-web \
+  --version 0.2.0
 ```
 
 ## 7. 验证
@@ -76,17 +79,18 @@ journalctl -u opspilot -n 100 --no-pager
 ss -lntp | grep -E ':80|:18080|:3306'
 curl -v http://127.0.0.1:18080/actuator/health/readiness
 curl -v http://127.0.0.1/health
+curl -I http://127.0.0.1/
 sudo nginx -t
 sudo firewall-cmd --list-all
 getenforce
 ```
 
-从其他机器只访问`http://SERVER_IP/health`，不应直接访问18080。
+从其他机器访问 `http://SERVER_IP/` 打开 NorthLedger，访问 `http://SERVER_IP/health` 检查入口；不应直接访问 18080。
 
 ## 8. 发布新版本与回滚
 
 ```bash
-sudo bash scripts/deploy.sh --artifact /tmp/opspilot-new.jar --version 0.1.1
+sudo bash scripts/deploy.sh --artifact /tmp/northledger-new.jar --web-dist /tmp/northledger-web-new --version 0.2.1
 sudo bash scripts/rollback.sh
 ```
 
@@ -94,6 +98,8 @@ sudo bash scripts/rollback.sh
 
 ```text
 /opt/opspilot/releases/<version>/opspilot.jar
+/opt/opspilot/releases/<version>/web/index.html
+/opt/opspilot/releases/<version>/web/assets/
 /opt/opspilot/current -> 当前版本
 /opt/opspilot/previous -> 上一版本
 ```

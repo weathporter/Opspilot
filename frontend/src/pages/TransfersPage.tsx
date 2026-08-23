@@ -116,7 +116,7 @@ export function TransfersPage() {
         <section className="panel form-panel">
           <div className="section-heading"><h2>发起一笔转账</h2><p>余额、订单和两条流水在同一事务提交。</p></div>
           {accounts.length < 2 ? (
-            <div className="inline-message inline-message--warning">至少需要两个账户，请先在“账户管理”创建演示账户。</div>
+            <div className="inline-message inline-message--warning">至少需要两个账户，请先在“账户管理”创建业务账户。</div>
           ) : (
             <form className="stacked-form" onSubmit={submitTransfer}>
               <label>

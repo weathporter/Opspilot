@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$Version = "0.1.1",
+    [string]$Version = "0.2.0",
     [string]$Namespace = "opspilot",
     [switch]$SkipBuild,
     # 镜像网络受限时可跳过 Minikube 插件；核心业务仍可通过 Service 端口转发验收。

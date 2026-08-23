@@ -20,7 +20,7 @@ export function TransferTable({ transfers, selectedId, onSelect, compact = false
       <div className="empty-state">
         <Inbox size={24} aria-hidden="true" />
         <strong>还没有转账记录</strong>
-        <span>先创建两个账户，再发起一笔转账即可形成完整演示数据。</span>
+        <span>先创建两个账户，再发起一笔转账即可形成订单与双录流水。</span>
       </div>
     );
   }

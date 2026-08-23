@@ -2,16 +2,18 @@
 # 生产环境必须通过 values-production.example.yaml 关闭内置单副本 MySQL，并使用外部 Secret。
 global:
   environment: kubernetes-local
-  version: "0.1.1"
+  version: "0.2.0"
 
 api:
   replicaCount: 2
   image:
     repository: opspilot-api
-    tag: "0.1.1"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   service:
     port: 18080
+  # 本地 Minikube 通常使用 HTTP；生产 TLS Ingress 应在覆盖文件中设为 true。
+  sessionCookieSecure: false
   resources:
     requests:
       cpu: 150m
@@ -29,7 +31,7 @@ web:
   replicaCount: 2
   image:
     repository: opspilot-web
-    tag: "0.1.1"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
   service:
     port: 8080
@@ -69,11 +71,14 @@ database:
   username: opspilot
 
 secrets:
-  # 本地默认值仅用于可复现演示。生产环境应设置 create=false 并引用密钥平台创建的 Secret。
+  # 不提交任何可登录默认凭据；安装时必须 --set-string 或引用平台预建 Secret。
   create: true
   existingSecret: ""
-  databasePassword: "opspilot_local_change_me"
-  mysqlRootPassword: "opspilot_root_local_change_me"
+  databasePassword: ""
+  mysqlRootPassword: ""
+  bootstrapAdminUsername: "admin"
+  bootstrapAdminPassword: ""
+  bootstrapAdminDisplayName: "Kubernetes Administrator"
 
 ingress:
   enabled: true

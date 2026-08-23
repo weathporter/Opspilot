@@ -5,7 +5,7 @@ import { accountApi } from '../lib/api';
 import { formatCurrency, formatDateTime } from '../lib/format';
 import type { Account } from '../types';
 
-/** 生成 16 位本地演示账号；后端唯一约束仍是并发冲突的最终防线。 */
+/** 生成 16 位本地业务账号；后端唯一约束仍是并发冲突的最终防线。 */
 function createDemoAccountNo(): string {
   const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`.slice(-14);
   return `62${suffix}`;
@@ -77,7 +77,7 @@ export function AccountsPage() {
     <div className="page-grid page-grid--form page-enter">
       <section className="panel form-panel">
         <div className="section-heading">
-          <h2>创建演示账户</h2>
+          <h2>创建业务账户</h2>
           <p>开户成功后立即写入 MySQL，并可在转账中心选择。</p>
         </div>
         <form onSubmit={handleSubmit} className="stacked-form">
@@ -98,7 +98,7 @@ export function AccountsPage() {
               value={form.holderName}
               maxLength={64}
               required
-              placeholder="例如：秋招演示主账户"
+              placeholder="例如：华北结算主账户"
               onChange={(event) => setForm({ ...form, holderName: event.target.value })}
             />
           </label>
@@ -141,7 +141,7 @@ export function AccountsPage() {
           </div>
         </div>
         {filteredAccounts.length === 0 ? (
-          <div className="empty-state"><WalletCards size={26} /><strong>没有匹配账户</strong><span>修改搜索条件或创建第一个演示账户。</span></div>
+          <div className="empty-state"><WalletCards size={26} /><strong>没有匹配账户</strong><span>修改搜索条件或创建第一个业务账户。</span></div>
         ) : (
           <div className="account-list">
             {filteredAccounts.map((account) => (

@@ -23,6 +23,7 @@ done
 # 无论从哪个目录调用都切到项目根，保证 Maven 和 target 路径稳定。
 cd "$PROJECT_ROOT"
 require_command mvn
+require_command npm
 
 # Bash 数组安全保存每个参数，避免字符串拼接后发生意外单词拆分。
 build_command=(mvn -B -ntp clean package)
@@ -31,10 +32,19 @@ if [[ "$SKIP_TESTS" == true ]]; then
   warn "本次构建跳过测试，只应在已单独验证测试时使用"
 fi
 
-log "开始构建OpsPilot"
+log "开始构建 NorthLedger"
 "${build_command[@]}"
 
-# 排除 Spring Boot 重打包保留的 *.original，只接受唯一的 opspilot-*.jar。
-mapfile -t artifacts < <(find target -maxdepth 1 -type f -name 'opspilot-*.jar' ! -name '*.original' -print)
+# 前端与 JAR 属于同一个发布版本；使用锁文件还原依赖并禁用第三方安装脚本，再生成静态制品。
+log "开始构建 React 生产资源"
+(
+  cd "${PROJECT_ROOT}/frontend"
+  npm ci --ignore-scripts
+  npm run build
+)
+
+# 排除 Spring Boot 重打包保留的 *.original，只接受唯一的 northledger-*.jar。
+mapfile -t artifacts < <(find target -maxdepth 1 -type f -name 'northledger-*.jar' ! -name '*.original' -print)
 [[ ${#artifacts[@]} -eq 1 ]] || die "预期找到一个可执行JAR，实际找到 ${#artifacts[@]} 个"
 log "构建完成: ${PROJECT_ROOT}/${artifacts[0]}"
+log "前端制品: ${PROJECT_ROOT}/frontend/dist"

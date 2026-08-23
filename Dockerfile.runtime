@@ -4,7 +4,7 @@ FROM eclipse-temurin:17-jre-alpine
 
 # 镜像版本作为 OCI 标签，便于 docker inspect 确认实际部署版本。
 ARG APP_VERSION=dev
-LABEL org.opencontainers.image.title="OpsPilot" \
+LABEL org.opencontainers.image.title="NorthLedger" \
       org.opencontainers.image.description="Cloud-native operations practice for a financial transaction service" \
       org.opencontainers.image.version="${APP_VERSION}"
 
@@ -14,8 +14,8 @@ WORKDIR /app
 RUN addgroup -S -g 10001 opspilot \
     && adduser -S -D -H -u 10001 -G opspilot opspilot
 
-# JAR 必须先由主机 mvn package 生成；.dockerignore 已允许 target/opspilot-*.jar 进入构建上下文。
-COPY --chown=opspilot:opspilot target/opspilot-*.jar /app/app.jar
+# JAR 必须先由主机 mvn package 生成；.dockerignore 已允许 target/northledger-*.jar 进入构建上下文。
+COPY --chown=opspilot:opspilot target/northledger-*.jar /app/app.jar
 
 # 只使用容器内存的约 75% 作为 Java 堆等内存预算，并在 OOM 后退出供编排系统恢复。
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"

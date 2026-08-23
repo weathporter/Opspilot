@@ -4,7 +4,8 @@ WORKDIR /workspace
 
 # 先复制依赖清单以利用 Docker 分层缓存；源码变化不会导致每次重新安装 npm 包。
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+# 当前依赖不需要原生安装脚本；禁用生命周期脚本可缩小构建阶段的供应链执行面。
+RUN npm ci --ignore-scripts
 
 # 再复制前端源码并执行 TypeScript 检查和 Vite 生产构建。
 COPY frontend/ ./

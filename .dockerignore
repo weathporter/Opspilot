@@ -2,7 +2,7 @@
 
 # 默认排除 Maven target 的全部产物，随后只重新允许 runtime 镜像所需的可执行 JAR。
 target/*
-!target/opspilot-*.jar
+!target/northledger-*.jar
 
 # 前端依赖和本地构建缓存体积很大；运行时镜像只复制 frontend/dist。
 frontend/node_modules

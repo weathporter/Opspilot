@@ -2,7 +2,7 @@
 # Linux/macOS 版一键部署脚本；与 PowerShell 版执行相同的构建、加载、Helm 升级和验收步骤。
 set -Eeuo pipefail
 
-VERSION="${1:-0.1.1}"
+VERSION="${1:-0.2.0}"
 NAMESPACE="${NAMESPACE:-opspilot}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"

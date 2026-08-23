@@ -53,8 +53,8 @@ services:
     image: grafana/grafana:13.1.0
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      # 本地可用默认值，正式环境必须在 .env/密钥系统中覆盖。
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-opspilot_grafana_dev_password}
+      # 没有显式密码就拒绝启动，避免长期保留公开默认凭据。
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
       # 禁止访客自行注册和匿名访问，减少误暴露。
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"

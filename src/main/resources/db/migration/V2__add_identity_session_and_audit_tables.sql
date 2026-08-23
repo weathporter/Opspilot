@@ -1,0 +1,65 @@
+-- V1 已经在真实环境执行，绝不能修改；企业级身份、共享会话与审计能力通过新的 V2 向前演进。
+
+-- 应用用户只保存 BCrypt 密文。username 是登录标识，display_name 只用于界面展示。
+CREATE TABLE app_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    display_name VARCHAR(64) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP(6) NOT NULL,
+    updated_at TIMESTAMP(6) NOT NULL,
+    CONSTRAINT uk_app_user_username UNIQUE (username)
+);
+
+-- 角色单独成表，允许一个用户拥有多个职责；主键阻止重复授权。
+CREATE TABLE app_user_role (
+    user_id BIGINT NOT NULL,
+    role VARCHAR(32) NOT NULL,
+    CONSTRAINT pk_app_user_role PRIMARY KEY (user_id, role),
+    CONSTRAINT fk_app_user_role_user
+        FOREIGN KEY (user_id) REFERENCES app_user (id) ON DELETE CASCADE
+);
+
+-- 安全/业务审计事件采用只追加模型，不提供修改和删除接口。
+CREATE TABLE audit_event (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_type VARCHAR(64) NOT NULL,
+    outcome VARCHAR(16) NOT NULL,
+    actor VARCHAR(64),
+    target_type VARCHAR(64),
+    target_id VARCHAR(128),
+    trace_id VARCHAR(64),
+    source_ip VARCHAR(45),
+    description VARCHAR(255) NOT NULL,
+    occurred_at TIMESTAMP(6) NOT NULL
+);
+
+CREATE INDEX idx_audit_event_occurred_at ON audit_event (occurred_at);
+CREATE INDEX idx_audit_event_actor_occurred_at ON audit_event (actor, occurred_at);
+
+-- Spring Session JDBC 的 MySQL 表结构。PRIMARY_ID 是数据库主键，SESSION_ID 才是浏览器 Cookie 中的随机标识。
+CREATE TABLE SPRING_SESSION (
+    PRIMARY_ID CHAR(36) NOT NULL,
+    SESSION_ID CHAR(36) NOT NULL,
+    CREATION_TIME BIGINT NOT NULL,
+    LAST_ACCESS_TIME BIGINT NOT NULL,
+    MAX_INACTIVE_INTERVAL INT NOT NULL,
+    EXPIRY_TIME BIGINT NOT NULL,
+    PRINCIPAL_NAME VARCHAR(100),
+    CONSTRAINT SPRING_SESSION_PK PRIMARY KEY (PRIMARY_ID)
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;
+
+CREATE UNIQUE INDEX SPRING_SESSION_IX1 ON SPRING_SESSION (SESSION_ID);
+CREATE INDEX SPRING_SESSION_IX2 ON SPRING_SESSION (EXPIRY_TIME);
+CREATE INDEX SPRING_SESSION_IX3 ON SPRING_SESSION (PRINCIPAL_NAME);
+
+-- 会话属性使用二进制序列化值，并通过级联外键随主会话一起清理。
+CREATE TABLE SPRING_SESSION_ATTRIBUTES (
+    SESSION_PRIMARY_ID CHAR(36) NOT NULL,
+    ATTRIBUTE_NAME VARCHAR(200) NOT NULL,
+    ATTRIBUTE_BYTES BLOB NOT NULL,
+    CONSTRAINT SPRING_SESSION_ATTRIBUTES_PK PRIMARY KEY (SESSION_PRIMARY_ID, ATTRIBUTE_NAME),
+    CONSTRAINT SPRING_SESSION_ATTRIBUTES_FK FOREIGN KEY (SESSION_PRIMARY_ID)
+        REFERENCES SPRING_SESSION (PRIMARY_ID) ON DELETE CASCADE
+) ENGINE=InnoDB ROW_FORMAT=DYNAMIC;

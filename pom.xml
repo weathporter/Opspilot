@@ -22,10 +22,10 @@
 
     <!-- Maven 坐标唯一标识构建产物，最终 JAR 名称来自 artifactId 和 version。 -->
     <groupId>com.opspilot</groupId>
-    <artifactId>opspilot</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
-    <name>OpsPilot</name>
-    <description>面向金融业务场景的云原生部署、监控与故障处置实践平台</description>
+    <artifactId>northledger</artifactId>
+    <version>0.2.0</version>
+    <name>NorthLedger</name>
+    <description>可部署、可审计、可观测的资金账户与交易平台</description>
 
     <properties>
         <!-- Spring Boot 3.x 的基线是 Java 17；编译、运行和容器 JRE 必须保持兼容。 -->
@@ -39,6 +39,24 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+          Spring Security：提供用户名密码认证、会话固定攻击防护、CSRF、安全响应头和服务端 RBAC。
+          依赖只提供安全能力，具体哪些路径属于哪些角色仍由 SecurityConfiguration 显式声明。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
+          把 HttpSession 持久化到 MySQL。这样多副本部署时，请求切换到另一 API Pod 后仍能恢复登录态，
+          同时避免把可读取的身份令牌保存在浏览器 localStorage。
+        -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-jdbc</artifactId>
         </dependency>
 
         <!-- Jakarta Bean Validation：执行 @NotBlank、@Pattern、@DecimalMin 等边界校验。 -->
@@ -88,6 +106,13 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Spring Security 的 MockMvc 支持：提供 csrf() 与 @WithMockUser 等安全契约测试工具。 -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
 

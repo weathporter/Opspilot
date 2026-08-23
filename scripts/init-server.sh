@@ -46,7 +46,7 @@ if ! id opspilot >/dev/null 2>&1; then
 fi
 
 # releases 存不可变版本，current/previous 是软链接；shared 存跨版本共享文件，日志单独放 /var/log。
-install -d -o opspilot -g opspilot -m 0750 /opt/opspilot/releases /opt/opspilot/shared /var/log/opspilot
+install -d -o opspilot -g opspilot -m 0750 /opt/opspilot /opt/opspilot/releases /opt/opspilot/shared /var/log/opspilot
 # 配置目录 root 可写、服务组可读，普通用户不可访问。
 install -d -o root -g opspilot -m 0750 /etc/opspilot
 
@@ -58,8 +58,11 @@ install -D -o root -g root -m 0644 "${PROJECT_ROOT}/deploy/linux/logrotate/opspi
 # 首次才复制环境模板，重复初始化不能覆盖管理员已经填写的真实密码。
 if [[ ! -f /etc/opspilot/opspilot.env ]]; then
   install -o root -g opspilot -m 0640 "${PROJECT_ROOT}/deploy/linux/env/opspilot.env.example" /etc/opspilot/opspilot.env
-  warn "已创建 /etc/opspilot/opspilot.env，请先修改DB_PASSWORD等配置"
+  warn "已创建 /etc/opspilot/opspilot.env，请先填写数据库与首个管理员配置"
 fi
+
+# Nginx 只获得读取发布静态文件所需的补充组权限，不获得环境文件写权限或服务账号 shell。
+usermod -a -G opspilot nginx
 
 # SELinux enforcing/permissive 时允许 httpd_t 域的 Nginx 主动连接本机 Java upstream。
 if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" != "Disabled" ]]; then

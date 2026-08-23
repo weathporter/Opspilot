@@ -90,6 +90,25 @@ spec:
                 secretKeyRef:
                   name: {{ include "opspilot.databaseSecretName" . }}
                   key: database-password
+            - name: BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opspilot.databaseSecretName" . }}
+                  key: bootstrap-admin-username
+            - name: BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opspilot.databaseSecretName" . }}
+                  key: bootstrap-admin-password
+            - name: BOOTSTRAP_ADMIN_DISPLAY_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opspilot.databaseSecretName" . }}
+                  key: bootstrap-admin-display-name
+            - name: SESSION_COOKIE_SECURE
+              value: {{ .Values.api.sessionCookieSecure | quote }}
+            - name: LOGGING_STRUCTURED_FORMAT_CONSOLE
+              value: ecs
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
           securityContext:

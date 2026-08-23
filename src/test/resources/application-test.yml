@@ -12,6 +12,18 @@ spring:
   main:
     # 关闭启动横幅，减少测试输出噪声，让失败堆栈更醒目。
     banner-mode: off
+  session:
+    jdbc:
+      # V2 已由 Flyway 创建会话表，测试启动时不允许 Spring Session 再次初始化同一结构。
+      initialize-schema: never
+
+# 仅用于临时 Testcontainers 数据库的引导管理员；不是生产凭据，也不会进入最终镜像环境变量。
+northledger:
+  security:
+    bootstrap:
+      username: admin
+      password: NorthLedger-Test-Only-123!
+      display-name: Test Administrator
 
 logging:
   level:

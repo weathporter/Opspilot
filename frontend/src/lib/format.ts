@@ -11,6 +11,13 @@ export function formatCurrency(value: number | string | undefined): string {
   return currencyFormatter.format(Number.isFinite(numeric) ? numeric : 0);
 }
 
+/** 后端 successRate 已按 0-100 返回，这里只负责限制异常范围并添加百分号。 */
+export function formatPercent(value: number | undefined): string {
+  const numeric = Number(value ?? 0);
+  const safe = Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 0;
+  return `${safe.toFixed(2)}%`;
+}
+
 /** 使用本地时区展示秒级时间；后端数据库统一保存微秒精度。 */
 export function formatDateTime(value?: string): string {
   if (!value) return '—';
@@ -32,7 +39,7 @@ export function maskAccount(accountNo: string): string {
   return `${accountNo.slice(0, 4)} ···· ${accountNo.slice(-4)}`;
 }
 
-/** 生成适合人工识别的本地演示幂等键；提交重试时输入框会保留同一个值。 */
+/** 生成适合人工识别的业务幂等键；提交重试时输入框会保留同一个值。 */
 export function createIdempotencyKey(): string {
   const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
   const random = Math.random().toString(36).slice(2, 8);

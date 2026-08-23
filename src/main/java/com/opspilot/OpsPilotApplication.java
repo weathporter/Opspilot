@@ -2,6 +2,7 @@ package com.opspilot;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /**
  * OpsPilot 进程的唯一启动入口。
@@ -11,6 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * Filter 等组件，并根据 classpath 中的依赖组装 Web、JPA、Actuator 等基础设施。</p>
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class OpsPilotApplication {
 
     /**

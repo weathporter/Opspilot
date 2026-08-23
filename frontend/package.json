@@ -1,7 +1,7 @@
 {
-  "name": "opspilot-web",
+  "name": "northledger-web",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 18100",
@@ -13,7 +13,7 @@
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "6.28.1"
+    "react-router-dom": "6.30.6"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",

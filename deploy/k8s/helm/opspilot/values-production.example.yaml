@@ -9,6 +9,7 @@ api:
     tag: "2026.08.11"
     pullPolicy: IfNotPresent
   replicaCount: 3
+  sessionCookieSecure: true
   autoscaling:
     enabled: true
     minReplicas: 3
@@ -32,7 +33,7 @@ database:
 
 secrets:
   create: false
-  # 该 Secret 由 Vault、云密钥服务或平台团队预先创建，必须包含 database-password。
+  # 该 Secret 由密钥平台预先创建，必须包含 database-password 与三项 bootstrap-admin-* 键。
   existingSecret: opspilot-production-database
 
 ingress:

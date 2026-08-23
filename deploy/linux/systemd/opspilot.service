@@ -1,8 +1,8 @@
-# OpsPilot 的 systemd 单元。安装到 /etc/systemd/system/opspilot.service 后需执行 systemctl daemon-reload。
+# NorthLedger 的 systemd 单元。安装到 /etc/systemd/system/opspilot.service 后需执行 systemctl daemon-reload。
 
 [Unit]
 # systemctl status/journalctl 中显示的服务说明。
-Description=OpsPilot financial transaction service
+Description=NorthLedger financial transaction service
 # 运维文档提示；此字段不会自动托管网页。
 Documentation=https://localhost/docs/runbooks/linux-deployment
 # Wants 表示希望网络就绪目标被拉起，但其失败不会强制本服务失败。

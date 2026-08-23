@@ -1,11 +1,11 @@
-# OpsPilot 的默认 Spring Boot 配置。
+# NorthLedger 的默认 Spring Boot 配置。
 # ${ENV_NAME:default} 表示优先读取环境变量，未提供时使用冒号后的本地默认值；
 # 因此同一份 JAR 可以在 IDE、Docker Compose 和 Linux systemd 中运行而不修改源码。
 
 spring:
   application:
     # 进入日志、Micrometer 标签和 /actuator/info 的稳定应用名。
-    name: opspilot
+    name: northledger
   lifecycle:
     # 优雅停机阶段最多等待 20 秒，让正在处理的 HTTP 请求和事务有机会结束。
     timeout-per-shutdown-phase: 20s
@@ -13,8 +13,8 @@ spring:
     # 本机默认连接 3306；Compose 通过 DB_URL 覆盖为 mysql:3306（容器 DNS + 容器端口）。
     url: ${DB_URL:jdbc:mysql://localhost:3306/opspilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
     username: ${DB_USERNAME:opspilot}
-    # 默认值仅方便本地学习，生产密码必须由 systemd EnvironmentFile 或密钥系统注入。
-    password: ${DB_PASSWORD:opspilot_dev_password}
+    # 密码没有源码默认值：IDE、Compose 和 systemd 都必须通过环境变量或受控密钥注入。
+    password: ${DB_PASSWORD}
   jpa:
     # 禁止在 Controller 返回 JSON 时继续懒加载数据库；查询必须明确发生在服务事务内。
     open-in-view: false
@@ -31,6 +31,13 @@ spring:
   flyway:
     # 应用启动时先校验历史迁移，再执行尚未应用的新版本 SQL；失败则拒绝启动。
     enabled: true
+  session:
+    # HttpSession 由 MySQL 共享，API 多副本之间不需要粘性会话。
+    store-type: jdbc
+    timeout: ${SESSION_TIMEOUT:30m}
+    jdbc:
+      # 会话表由 Flyway V2 统一治理，禁止框架在不同环境自行建出不一致的结构。
+      initialize-schema: never
   jackson:
     # JSON 响应省略 null 字段，例如处理中订单还没有 completedAt。
     default-property-inclusion: non_null
@@ -44,6 +51,22 @@ server:
   shutdown: graceful
   # 信任 Spring 支持的 Forwarded/X-Forwarded-*，使应用知道代理前的协议和客户端地址。
   forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        # 浏览器脚本不能读取 SESSION；CSRF 使用的是单独 XSRF-TOKEN Cookie。
+        http-only: true
+        same-site: lax
+        # 本地 HTTP 保持可运行，生产经 HTTPS 入口时通过 SESSION_COOKIE_SECURE=true 强制 Secure。
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+# 首次部署可通过环境变量创建一次管理员；默认全部为空，因此源码不含可登录凭据。
+northledger:
+  security:
+    bootstrap:
+      username: ${BOOTSTRAP_ADMIN_USERNAME:}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+      display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:System Administrator}
 
 management:
   endpoints:

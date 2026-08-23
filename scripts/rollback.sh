@@ -43,7 +43,8 @@ else
 fi
 
 # 只有包含预期 JAR 的版本目录才允许成为目标；禁止“回滚”到当前版本造成无意义重启。
-[[ -n "$TARGET" && -f "${TARGET}/opspilot.jar" ]] || die "可回滚版本不存在: ${TARGET:-未设置}"
+[[ -n "$TARGET" && -f "${TARGET}/opspilot.jar" && -f "${TARGET}/web/index.html" ]] \
+  || die "可回滚版本不完整或不存在: ${TARGET:-未设置}"
 [[ "$TARGET" != "$CURRENT_TARGET" ]] || die "目标版本已经是当前版本"
 
 # 先让 previous 记录回滚前版本，若目标不健康还可自动恢复。
