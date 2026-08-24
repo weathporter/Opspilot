@@ -1,62 +1,89 @@
-# NorthLedger 阶段验收报告（2026-08-23）
+# NorthLedger 0.3.0 验收报告（2026-08-24）
 
-## 验收结论
+## 1. 验收结论
 
-当前版本达到“可写入校招简历的个人项目”标准：资金账户、幂等转账、双录流水、身份权限、安全审计、前端门户、容器部署和可观测性形成了可运行闭环，构建和部署路径有自动化门禁，生产边界有明确说明。
+NorthLedger 0.3.0 已达到“可写入校招简历的个人项目”交付标准：资金账户、幂等转账、双录流水、身份权限、安全审计、React 门户、MySQL 业务事实、Redis 共享会话与短 TTL 缓存、Compose 可观测性、Linux 原生发布和 Kubernetes Helm 交付形成了可运行、可测试、可排障、可回滚和可解释的闭环。
 
-“简历级”表示可运行、可复现、可测试、可排障和可解释，不表示项目已经承载真实银行资金，也不把单机 MySQL、Docker Desktop 或 Minikube 描述成生产高可用环境。
+“简历级”不等于真实银行生产系统。本项目没有承载真实资金；Docker Desktop、单副本 MySQL/Redis 与 Minikube 都是本地实战环境，不描述为生产高可用。生产覆盖文件关闭内置状态组件，连接外部高可用 MySQL/Redis，并为外部 Redis 启用 TLS 与企业私有 CA 信任材料；该生产覆盖已完成 Helm 静态渲染，未伪称已经连接真实企业托管服务。
 
-## 本次实时验证证据
+## 2. 本次新鲜验证证据
 
-| 验收项 | 结果 | 证据摘要 |
+| 验收项 | 结果 | 2026-08-24 实际证据 |
 | --- | --- | --- |
-| 后端全量测试 | 通过 | 18 个 JUnit/MockMvc/Testcontainers MySQL 测试，0 failure、0 error |
-| 身份与权限契约 | 通过 | 匿名 401、角色 403、CSRF、服务端会话、管理员用户管理均有集成测试 |
-| 安全审计与指标 | 通过 | 失败登录产生审计事件和低基数 Prometheus 指标，响应不含密码 |
-| 前端生产构建 | 通过 | TypeScript 编译与 Vite production build 完成，1598 个模块转换成功 |
-| 前端依赖门禁 | 通过 | 0 个 high/critical；2 个 moderate 已完成可达性判断与缓解记录 |
-| Compose 配置 | 通过 | 基础与完整观测覆盖文件可解析 |
-| Helm 静态校验 | 通过 | Chart lint 为 0 failed，Secret 值通过一次性测试参数注入 |
-| Docker 镜像 | 通过 | API 与 Web runtime 镜像构建成功，均以非 root 用户运行 |
-| Compose 完整环境 | 通过 | MySQL、API、Web、Prometheus、Grafana、Alertmanager、Loki、Alloy、Node Exporter、cAdvisor 启动 |
-| 真实会话闭环 | 通过 | 管理员登录、读取运行汇总/账户/用户/审计并退出成功 |
-| 数据连续性 | 通过 | 原有 MySQL volume 原地升级，验收时读取到 13 个既有账户 |
-| 入口健康 | 通过 | NorthLedger、Grafana、Prometheus、Alertmanager、Loki readiness 均返回 2xx |
-| 安全响应头 | 通过 | 实际入口返回 CSP、frame、nosniff、referrer 与 permissions policy，且首页保持 no-cache |
+| 后端全量测试 | 通过 | 26 个 JUnit/MockMvc/Testcontainers 测试，真实 MySQL 8.4 与带密码 Redis 7.4.10；0 failure、0 error、0 skipped |
+| Redis 会话 | 通过 | 登录后 Session 写入 `northledger:session:*`；Kubernetes 双 API 副本无需粘性会话；登出主动清理 |
+| Redis 总览缓存 | 通过 | 固定命名空间、JSON 序列化、30～40 秒抖动 TTL、不缓存 null；本地运行观测 TTL=32 秒 |
+| 一致性与降级 | 通过 | 账户/转账在数据库提交后触发缓存失效；真实 Redis 中断时总览回源 MySQL 并记录低基数指标，Session/readiness 保持关键依赖边界 |
+| 身份与权限 | 通过 | 匿名 401、角色 403、CSRF、管理员用户管理、失败登录审计和服务端会话均有集成测试 |
+| 前端生产构建 | 通过 | TypeScript 与 Vite build 成功，1606 个模块转换；产物约 248 kB JS、28 kB CSS（压缩前） |
+| 前端依赖门禁 | 通过 | `npm audit --audit-level=moderate` 为 0 vulnerability；React Router 固定到已修复安全公告的 7.18.2 |
+| Compose 完整环境 | 通过 | MySQL、Redis、API、Web、Prometheus、Grafana、Alertmanager、Loki、Alloy、Node Exporter、cAdvisor、Redis Exporter 共 12 个服务运行 |
+| 本地业务闭环 | 通过 | 匿名会话、管理员登录、重复总览缓存复用、管理员角色与退出均实际验证 |
+| Redis 运行策略 | 通过 | 认证 PING、AOF、`noeviction`、回环端口 16379、Exporter `redis_up=1` |
+| 可观测性 | 通过 | Prometheus 6/6 Targets up、8 条规则加载；Grafana 自动发现 1 个 NorthLedger Redis 看板；Alertmanager/Loki readiness 返回 200 |
+| 故障演练 | 通过 | 长时演练曾观察 `RedisUnavailable` 从 pending 到 firing 并进入 Alertmanager，恢复后归零；最终 20 秒有界演练再次验证自动恢复和入口 `UP` |
+| Helm 本地模式 | 通过 | 内置 MySQL/Redis、PVC、Exporter、NetworkPolicy、Secret、探针、HPA/PDB/RBAC 均可 lint/render |
+| Helm 外部生产模式 | 静态通过 | 关闭内置 MySQL/Redis，渲染 `rediss://`、Spring SSL bundle、PKCS12 truststore、Exporter PEM CA 与 monitoring 命名空间网络放行 |
+| Linux 交付契约 | 通过 | API/Web 原子发布、Nginx、Redis 专用最小密钥文件、巡检与诊断契约通过；EnvironmentFile 空格/元字符按普通数据解析 |
 
-## Kubernetes 证据边界
+## 3. Kubernetes 真实集群证据
 
-Helm Chart 当前包含双副本 API/Web、三类探针、资源请求与限制、HPA、PDB、RBAC、NetworkPolicy、Ingress 和教学用 MySQL StatefulSet/PVC，并已通过本次 Helm lint。
+本次不是只做 `helm template`。在 Docker Desktop 驱动的 Minikube 中完成 NorthLedger 0.3.0 revision 13 实际升级：
 
-2026-08-11 的既有实操记录曾验证 Minikube 中的 Pod Ready、Helm test、业务冒烟、版本回滚和最小权限；当前 Minikube 已停止，本次没有把历史状态当作实时状态重新声明。再次投递前可按 `deploy/k8s/README.md` 从零复现并更新实操记录。
+- Helm Release 状态为 `deployed`，Helm Release Test 为 `Succeeded`。
+- API 2/2、Web 2/2、MySQL 1/1、Redis 1/1、Redis Exporter 1/1 全部 Ready。
+- MySQL PVC 5 GiB、Redis PVC 512 MiB 均为 Bound；已有 MySQL PVC 升级时复用了首次初始化凭据，没有删除或重建数据卷。
+- 默认拒绝入站后，分别放行 Web→API、API→MySQL/Redis、Exporter→Redis、Prometheus→API/Exporter。
+- Docker Desktop 构建与运行 Pod 内 `app.jar` 的 SHA-256 一致，排除了同标签节点缓存继续运行旧镜像的问题。
+- 8 步集群冒烟真实完成管理员登录、创建账户、转账、相同幂等键重放、两条双录流水、`balanced=true`、Redis Session、有限 TTL 缓存、数据库提交后缓存键删除与再次生成。
+- 本次冒烟 requestId 为 `k8s-smoke-0824112840`，重新生成缓存 TTL=30 秒，`cacheEvictedAfterCommit=True`。
 
-内置单实例 MySQL 只用于学习 StatefulSet、PVC、探针、备份和恢复。生产 profile 关闭内置数据库并要求外部高可用 MySQL；HPA 只有在 Metrics Server 可用时才会根据指标执行扩缩容。
+上述真实集群记录产生于 revision 13。其后的最终审查又补上了“既有 Redis PVC 复用匹配密码”、Chart-managed Secret 校验和、Helm 3/4 回滚参数兼容和内置/外部 Redis 凭据轮换分流。这些后续修复已通过 PowerShell 5.1/7 解析、Bash 语法、Helm 双模式 lint/render 与 Redis 交付契约，但没有再次启动 Minikube 生成新 revision；因此不把静态复验写成第二次集群实测。
 
-## 可重复执行
+本机受 7.5 GiB Docker 内存限制，Minikube 验收后执行的是 `minikube stop` 而不是删除集群；PVC 与 Helm history 保留。目前恢复运行完整 Compose 演示环境。因为最终部署使用 `-SkipAddons -DisableIngress`，HPA 对象存在但 Metrics Server 未启用，`TARGETS` 显示 unknown，不能据此声称已经触发真实自动扩容。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1 -WithObservability -RunTests
-```
+## 4. 可重复执行门禁
+
+后端与前端：
 
 ```powershell
 mvn -B -ntp test
 Set-Location frontend
-npm audit --audit-level=high
+npm ci
+npm audit --audit-level=moderate
 npm run build
 ```
+
+Compose、Linux 与 Redis 交付：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/tests/validate-linux-release.ps1
+powershell -ExecutionPolicy Bypass -File scripts/tests/validate-redis-delivery.ps1
+powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1 -WithObservability
+```
+
+Helm 内置依赖模式：
 
 ```powershell
 helm lint deploy/k8s/helm/opspilot `
   --set-string secrets.databasePassword=test-database-password `
   --set-string secrets.mysqlRootPassword=test-root-password `
+  --set-string secrets.redisPassword=test-redis-password `
   --set-string secrets.bootstrapAdminPassword=test-bootstrap-password
 ```
 
-## 投递前个人验收
+Helm 外部 TLS 模式与真实 Minikube：
 
-- 从空白环境独立完成一次 Compose 启动，不依赖自动补救。
-- 用管理员、操作员和审计员分别验证权限矩阵，并解释 401、403 与 CSRF 失败。
-- 演示余额不足、幂等重放、错误密码、越权和 MySQL 暂停等故障。
-- 用 traceId 串联页面错误、审计记录、应用日志和 Prometheus 趋势。
-- 从零复现一次 Helm 部署、失败发布和回滚，区分配置存在与亲自验证。
-- 根据真实掌握程度使用“了解、熟悉、熟练”，不能把仓库中存在的文件直接等同于个人能力。
+```powershell
+helm lint deploy/k8s/helm/opspilot -f deploy/k8s/helm/opspilot/values-production.example.yaml
+powershell -ExecutionPolicy Bypass -File scripts/k8s/deploy-minikube.ps1 -SkipAddons -DisableIngress
+powershell -ExecutionPolicy Bypass -File scripts/k8s/smoke-test.ps1
+```
+
+## 5. 当前边界与个人验收
+
+- MySQL 仍是账户、转账、流水、用户和审计的唯一事实来源；Redis 只保存可过期会话和可重建总览快照。
+- 内置 Redis 是单副本学习环境。AOF 与 PVC 能练习普通重建恢复，但不能替代跨节点故障转移、备份恢复演练和容量治理。
+- 外部 TLS values 是可渲染交付接口，不等于已经获得企业 Redis、证书、SLA 或备份权限。
+- GitHub Actions 工作流已加入后端/前端、Linux、Redis、Helm 双模式和 Prometheus 门禁；是否远端绿色必须以本次推送后的 GitHub 运行结果为准。
+- 投递前本人应能从零启动、解释 MySQL/Redis 数据边界、制造并恢复 Redis 故障、读懂 PromQL/告警状态、完成一次 Helm 部署与回滚，并按真实掌握程度使用“了解、熟悉、熟练”。

@@ -3,6 +3,26 @@
 # node-exporter 采主机指标；cAdvisor 采容器资源指标。
 
 services:
+  redis-exporter:
+    # 把 Redis INFO/命令统计转换为 Prometheus 指标；版本固定并与仓库 Runbook 一起验证。
+    image: oliver006/redis_exporter:v1.89.0-alpine
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_USER: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    ports:
+      # 仅本机开放用于学习抓取结果；Prometheus 容器使用 redis-exporter:9121。
+      - "127.0.0.1:19121:9121"
+    networks:
+      - opspilot
+    depends_on:
+      redis:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   prometheus:
     # 固定版本保证配置语法和查询行为可重复。
     image: prom/prometheus:v3.13.0
@@ -29,6 +49,8 @@ services:
       app:
         condition: service_healthy
       alertmanager:
+        condition: service_started
+      redis-exporter:
         condition: service_started
     restart: unless-stopped
 

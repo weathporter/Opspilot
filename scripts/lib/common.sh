@@ -37,15 +37,44 @@ require_file() {
   [[ -f "$1" ]] || die "文件不存在: $1"
 }
 
-# 加载管理员维护的 KEY=VALUE 环境文件，并把其中变量自动 export 给后续子进程。
+# 读取 systemd EnvironmentFile 中某一个键的原始值，不执行文件中的 Shell 语法。
+# 该函数专供巡检等最小权限场景，只取所需 Redis 字段，避免把数据库和管理员密钥扩散给子进程。
+read_env_value() {
+  local env_file="$1"
+  local requested_key="$2"
+  local line key value
+  require_file "$env_file"
+  [[ "$requested_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "环境变量键名不合法: $requested_key"
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+      if [[ "$key" == "$requested_key" ]]; then
+        printf '%s' "$value"
+        return 0
+      fi
+    fi
+  done < "$env_file"
+  return 1
+}
+
+# 安全加载管理员维护的 KEY=VALUE 文件并 export 给备份/恢复等子进程。
+# 不能 source systemd EnvironmentFile：密码中的 $()、反引号或分号不应被当作命令执行，带空格值也不应报错。
 load_env_file() {
   local env_file="$1"
+  local line key value
   require_file "$env_file"
-  set -a
-  # source 会执行 shell 语法，因此该文件必须由管理员维护，绝不能加载用户上传的不可信内容。
-  # shellcheck disable=SC1090
-  source "$env_file"
-  set +a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || die "环境文件存在无效行: $env_file"
+    key="${BASH_REMATCH[1]}"
+    value="${BASH_REMATCH[2]}"
+    export "$key=$value"
+  done < "$env_file"
 }
 
 # 限制版本号等将参与路径拼接的值，阻止斜杠、空格或 .. 等危险字符改变目标目录。

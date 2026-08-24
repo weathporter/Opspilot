@@ -1,12 +1,12 @@
 # 类生产覆盖示例：业务工作负载运行在 Kubernetes，数据库由企业托管服务提供。
 global:
   environment: production
-  version: "2026.08.11"
+  version: "0.3.0"
 
 api:
   image:
     repository: registry.example.com/platform/opspilot-api
-    tag: "2026.08.11"
+    tag: "0.3.0"
     pullPolicy: IfNotPresent
   replicaCount: 3
   sessionCookieSecure: true
@@ -18,7 +18,7 @@ api:
 web:
   image:
     repository: registry.example.com/platform/opspilot-web
-    tag: "2026.08.11"
+    tag: "0.3.0"
   replicaCount: 3
 
 mysql:
@@ -31,10 +31,30 @@ database:
   name: opspilot
   username: opspilot_app
 
+redis:
+  # 生产不使用 Chart 内置单节点 Redis；地址指向企业托管的高可用实例或代理入口。
+  enabled: false
+  host: redis-prod.internal.example
+  port: 6379
+  username: northledger
+  tls:
+    enabled: true
+    trustStore:
+      # 示例假设企业 Redis 使用私有 CA；Secret 同时提供 truststore.p12、truststore-password 与 ca.crt。
+      enabled: true
+      existingSecret: opspilot-production-redis-trust
+      key: truststore.p12
+      passwordKey: truststore-password
+      caKey: ca.crt
+
+redisExporter:
+  # 若平台已经统一采集托管 Redis，可关闭内置 exporter；保留时需允许其访问外部 Redis。
+  enabled: true
+
 secrets:
   create: false
-  # 该 Secret 由密钥平台预先创建，必须包含 database-password 与三项 bootstrap-admin-* 键。
-  existingSecret: opspilot-production-database
+  # 预建 Secret 必须包含 database-password、redis-password 与三项 bootstrap-admin-* 键。
+  existingSecret: opspilot-production-runtime
 
 ingress:
   host: opspilot.example.com
@@ -42,3 +62,12 @@ ingress:
     - secretName: opspilot-tls
       hosts:
         - opspilot.example.com
+
+networkPolicy:
+  prometheus:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: monitoring
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus

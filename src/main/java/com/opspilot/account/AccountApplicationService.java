@@ -2,6 +2,8 @@ package com.opspilot.account;
 
 import com.opspilot.common.DuplicateResourceException;
 import com.opspilot.common.ResourceNotFoundException;
+import com.opspilot.dashboard.BusinessDataChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,9 +30,17 @@ public class AccountApplicationService {
     /** 可替换时间源使测试能够固定“当前时间”，避免直接调用系统时钟。 */
     private final Clock clock;
 
-    public AccountApplicationService(AccountRepository accountRepository, Clock clock) {
+    /** 发布轻量业务变化事件，监听器只在数据库提交成功后清理总览缓存。 */
+    private final ApplicationEventPublisher eventPublisher;
+
+    public AccountApplicationService(
+            AccountRepository accountRepository,
+            Clock clock,
+            ApplicationEventPublisher eventPublisher
+    ) {
         this.accountRepository = accountRepository;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -48,7 +58,12 @@ public class AccountApplicationService {
                 LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS)
         );
         try {
-            return AccountResponse.from(accountRepository.saveAndFlush(account));
+            Account saved = accountRepository.saveAndFlush(account);
+            // 事件在事务内发布，但 AFTER_COMMIT 监听器只会在本方法成功提交后执行。
+            eventPublisher.publishEvent(new BusinessDataChangedEvent(
+                    BusinessDataChangedEvent.ChangeType.ACCOUNT_CREATED
+            ));
+            return AccountResponse.from(saved);
         } catch (DataIntegrityViolationException exception) {
             // 数据库唯一约束是并发场景下的最终防线，比“先查再插”更可靠。
             throw new DuplicateResourceException("ACCOUNT_ALREADY_EXISTS", "账号已存在", exception);

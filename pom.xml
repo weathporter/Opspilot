@@ -23,7 +23,7 @@
     <!-- Maven 坐标唯一标识构建产物，最终 JAR 名称来自 artifactId 和 version。 -->
     <groupId>com.opspilot</groupId>
     <artifactId>northledger</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <name>NorthLedger</name>
     <description>可部署、可审计、可观测的资金账户与交易平台</description>
 
@@ -51,12 +51,34 @@
         </dependency>
 
         <!--
-          把 HttpSession 持久化到 MySQL。这样多副本部署时，请求切换到另一 API Pod 后仍能恢复登录态，
-          同时避免把可读取的身份令牌保存在浏览器 localStorage。
+          Spring Cache 提供与存储实现解耦的 @Cacheable/@CacheEvict 抽象。
+          Redis 才是本项目选择的实际共享存储；该 starter 负责补齐缓存拦截器所需基础依赖。
+          官方依据：https://docs.spring.io/spring-boot/3.5/reference/io/caching.html
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
+        <!--
+          Spring Data Redis 只定义抽象；Boot starter 额外提供默认 Lettuce 客户端并自动配置
+          RedisConnectionFactory、RedisTemplate 与 StringRedisTemplate，缓存和会话共用该连接基础设施。
+          官方依据：https://docs.spring.io/spring-boot/3.5/how-to/nosql.html
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!--
+          Spring Session 3.5 的 Redis 模块把 HttpSession 持久化到共享 Redis。
+          多个 API Pod 因而能读取同一登录态，浏览器仍只保存 HttpOnly 的不透明 SESSION Cookie。
+          Spring Boot 父 POM 统一管理模块版本，不能混用 Spring Boot 4 才提供的新 starter 坐标。
+          官方依据：https://docs.spring.io/spring-session/reference/3.5/guides/boot-redis.html
         -->
         <dependency>
             <groupId>org.springframework.session</groupId>
-            <artifactId>spring-session-jdbc</artifactId>
+            <artifactId>spring-session-data-redis</artifactId>
         </dependency>
 
         <!-- Jakarta Bean Validation：执行 @NotBlank、@Pattern、@DecimalMin 等边界校验。 -->

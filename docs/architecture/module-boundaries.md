@@ -24,8 +24,9 @@ NorthLedger 使用模块化单体：只有一个 Spring Boot 可执行单元，�
 | `transfer_order` | transfer | 客户端请求号唯一，保存处理结果 |
 | `ledger_entry` | transfer | 每笔成功订单产生借方与贷方流水 |
 | `app_user` / `app_user_role` | identity | 用户名唯一、密码只存 BCrypt 哈希 |
-| `SPRING_SESSION*` | security/session | MySQL 共享会话、过期自动清理 |
 | `audit_event` | audit | 只追加、无删除业务接口 |
+
+Redis 不拥有任何资金业务事实：`northledger:session:*` 由 `security/session` 保存可过期的共享登录态；`northledger:cache:*` 由 `dashboard` 保存可从 MySQL 重建的运行总览。Flyway V2 已创建的 `SPRING_SESSION*` 表作为历史兼容结构保留，0.3.0 运行时不再读写，避免修改已经执行过的迁移。
 
 其他模块不能绕过服务层随意修改不属于自己的表。数据库结构由 Flyway 单向演进：已经执行的 `V1` 永不修改，新增结构使用 `V2+`。
 
@@ -55,7 +56,7 @@ NorthLedger 使用模块化单体：只有一个 Spring Boot 可执行单元，�
 不创建只有目录没有行为的空模块。只有出现以下证据才演进：
 
 - 独立扩缩容、团队边界或发布节奏差异明显时，评估服务拆分。
-- 出现大量重复读和可量化数据库压力时，评估 Redis。
+- 运行总览已经出现跨多张表的重复聚合读，因此 0.3.0 只为该读模型和共享会话引入 Redis；新增缓存对象仍需先证明收益、TTL 和失效策略。
 - 出现跨系统可靠事件分发需求时，评估 Outbox 与消息队列。
 - 出现跨进程慢调用且日志/指标不足以定位时，评估 OpenTelemetry tracing。
 - 出现真实知识检索业务时，才评估向量数据库；当前资金交易平台不需要 Milvus。

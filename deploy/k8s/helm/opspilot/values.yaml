@@ -2,13 +2,13 @@
 # 生产环境必须通过 values-production.example.yaml 关闭内置单副本 MySQL，并使用外部 Secret。
 global:
   environment: kubernetes-local
-  version: "0.2.0"
+  version: "0.3.0"
 
 api:
   replicaCount: 2
   image:
     repository: opspilot-api
-    tag: "0.2.0"
+    tag: "0.3.0"
     pullPolicy: IfNotPresent
   service:
     port: 18080
@@ -31,7 +31,7 @@ web:
   replicaCount: 2
   image:
     repository: opspilot-web
-    tag: "0.2.0"
+    tag: "0.3.0"
     pullPolicy: IfNotPresent
   service:
     port: 8080
@@ -70,12 +70,60 @@ database:
   name: opspilot
   username: opspilot
 
+redis:
+  # 本地 Minikube 用单副本 StatefulSet 学习持久化与排障；生产覆盖必须关闭并使用外部 HA Redis。
+  enabled: true
+  image:
+    repository: redis
+    tag: "7.4.10-alpine"
+    pullPolicy: IfNotPresent
+  host: opspilot-redis
+  port: 6379
+  username: default
+  tls:
+    # 本地 Redis 只在集群内部明文传输；外部生产 Redis 应启用 TLS。
+    enabled: false
+    trustStore:
+      # 公有 CA 可直接使用 JVM 默认信任库；企业私有 CA 才需要挂载预建 Secret。
+      enabled: false
+      existingSecret: ""
+      key: truststore.p12
+      passwordKey: truststore-password
+      # Redis Exporter 使用 PEM CA，而 Spring Boot 使用 PKCS12/JKS；同一 Secret 可同时保存两种格式。
+      caKey: ca.crt
+  maxmemory: 128mb
+  persistence:
+    size: 512Mi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+redisExporter:
+  enabled: true
+  image:
+    repository: oliver006/redis_exporter
+    tag: "v1.89.0-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
 secrets:
   # 不提交任何可登录默认凭据；安装时必须 --set-string 或引用平台预建 Secret。
   create: true
   existingSecret: ""
   databasePassword: ""
   mysqlRootPassword: ""
+  redisPassword: ""
   bootstrapAdminUsername: "admin"
   bootstrapAdminPassword: ""
   bootstrapAdminDisplayName: "Kubernetes Administrator"
@@ -93,6 +141,13 @@ podDisruptionBudget:
 
 networkPolicy:
   enabled: true
+  prometheus:
+    enabled: true
+    # 空 namespaceSelector 表示只接受当前命名空间内匹配 Pod；生产可按命名空间标签显式放行 monitoring。
+    namespaceSelector: {}
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: prometheus
 
 operatorRbac:
   # 创建最小权限的诊断 ServiceAccount；不授予读取 Secret 或修改数据库工作负载的权限。

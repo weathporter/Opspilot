@@ -51,6 +51,33 @@ spec:
       ports:
         - protocol: TCP
           port: 18080
+{{- if .Values.networkPolicy.prometheus.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-prometheus-to-api
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: api
+  policyTypes: ["Ingress"]
+  ingress:
+    # 指标入口与 Web 业务入口分别授权；默认同命名空间，生产可附加 monitoring namespaceSelector。
+    - from:
+        - podSelector:
+            {{- toYaml .Values.networkPolicy.prometheus.podSelector | nindent 12 }}
+          {{- with .Values.networkPolicy.prometheus.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: 18080
+{{- end }}
 {{- if .Values.mysql.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -74,5 +101,61 @@ spec:
       ports:
         - protocol: TCP
           port: 3306
+{{- end }}
+{{- if .Values.redis.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-redis-clients
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    # 只有 API 与 exporter 能建立 Redis TCP 连接；Web 和其他 OpsPilot Pod 默认被拒绝。
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opspilot
+              app.kubernetes.io/component: api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opspilot
+              app.kubernetes.io/component: redis-exporter
+      ports:
+        - protocol: TCP
+          port: 6379
+{{- end }}
+{{- if and .Values.redisExporter.enabled .Values.networkPolicy.prometheus.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opspilot-allow-prometheus-to-redis-exporter
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: redis-exporter
+  policyTypes: ["Ingress"]
+  ingress:
+    # 与 API 指标使用同一可配置来源，避免应用降级指标被默认拒绝策略挡住。
+    - from:
+        - podSelector:
+            {{- toYaml .Values.networkPolicy.prometheus.podSelector | nindent 12 }}
+          {{- with .Values.networkPolicy.prometheus.namespaceSelector }}
+          namespaceSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      ports:
+        - protocol: TCP
+          port: 9121
 {{- end }}
 {{- end }}

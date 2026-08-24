@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class ApiSmokeIntegrationTest extends MySqlIntegrationTest {
+class ApiSmokeIntegrationTest extends NorthLedgerIntegrationTest {
 
     /** 用于执行 MVC 请求并断言 HTTP 层响应。 */
     @Autowired

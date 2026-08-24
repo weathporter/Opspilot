@@ -56,13 +56,30 @@ capture service-definition systemctl cat opspilot
 capture nginx nginx -T
 capture journal journalctl -u opspilot --since "$SINCE" --no-pager
 
+# Redis INFO 不包含会话正文，但仍只采集运行、内存与统计分区；密码经环境传入且采集后立即清理。
+capture_redis_info() {
+  command -v redis-cli >/dev/null 2>&1 || return 0
+  [[ -r /etc/opspilot/opspilot.env ]] || return 0
+  local redis_host redis_port redis_username redis_password
+  redis_host="$(read_env_value /etc/opspilot/opspilot.env REDIS_HOST || printf '127.0.0.1')"
+  redis_port="$(read_env_value /etc/opspilot/opspilot.env REDIS_PORT || printf '6379')"
+  redis_username="$(read_env_value /etc/opspilot/opspilot.env REDIS_USERNAME || printf 'default')"
+  redis_password="$(read_env_value /etc/opspilot/opspilot.env REDIS_PASSWORD || true)"
+  [[ -n "$redis_password" ]] || return 0
+  REDISCLI_AUTH="$redis_password" redis-cli --no-auth-warning \
+    --user "$redis_username" -h "$redis_host" -p "$redis_port" \
+    INFO server memory stats
+  unset redis_host redis_port redis_username redis_password
+}
+capture redis-info capture_redis_info
+
 # 主机安装 Docker 时追加容器生命周期和资源瞬时快照；未安装时自然跳过。
 if command -v docker >/dev/null 2>&1; then
   capture docker-ps docker ps -a
   capture docker-stats docker stats --no-stream
 fi
 
-# 仅保留环境变量键名，所有等号后的值统一替换为 <redacted>，避免数据库密码进入诊断包。
+# 仅保留环境变量键名，所有等号后的值统一替换为 <redacted>，避免数据库/Redis密码进入诊断包。
 if [[ -r /etc/opspilot/opspilot.env ]]; then
   sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=.*/\1=<redacted>/' /etc/opspilot/opspilot.env \
     >"${work_dir}/environment-keys.txt"

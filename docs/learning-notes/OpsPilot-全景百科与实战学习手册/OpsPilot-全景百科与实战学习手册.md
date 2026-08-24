@@ -344,7 +344,7 @@ D:\Develop\OpsPilot
 
 - 不看目录，说出根目录八个主要区域及职责。
 - 从 `POST /api/v1/accounts` 依次找到 Controller、DTO、Service、Repository、Entity 和迁移表。
-- 解释为什么现阶段不用微服务、Kafka、Redis、Milvus。
+- 解释为什么现阶段只让 Redis 承担共享会话和短 TTL 总览缓存，同时不用微服务、Kafka、Milvus。
 - 解释“Git 没有提交”和“项目不能运行”为什么不是同一件事。
 
 <a id="part-01"></a>

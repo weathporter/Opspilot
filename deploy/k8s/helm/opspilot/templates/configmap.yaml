@@ -10,6 +10,18 @@ data:
   APP_VERSION: {{ .Values.global.version | quote }}
   DB_URL: {{ printf "jdbc:mysql://%s:%v/%s?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false" .Values.database.host .Values.database.port .Values.database.name | quote }}
   DB_USERNAME: {{ .Values.database.username | quote }}
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  REDIS_PORT: {{ .Values.redis.port | quote }}
+  REDIS_USERNAME: {{ .Values.redis.username | quote }}
+  SPRING_DATA_REDIS_SSL_ENABLED: {{ .Values.redis.tls.enabled | quote }}
+  {{- if .Values.redis.tls.trustStore.enabled }}
+  # 受管 Redis 使用企业私有 CA 时，Spring Boot 通过命名 SSL bundle 读取只读 truststore。
+  SPRING_DATA_REDIS_SSL_BUNDLE: "redis"
+  SPRING_SSL_BUNDLE_JKS_REDIS_TRUSTSTORE_LOCATION: "file:/var/run/secrets/northledger/redis/truststore.p12"
+  SPRING_SSL_BUNDLE_JKS_REDIS_TRUSTSTORE_TYPE: "PKCS12"
+  {{- end }}
+  REDIS_CONNECT_TIMEOUT: "1s"
+  REDIS_TIMEOUT: "1s"
   SERVER_ADDRESS: "0.0.0.0"
   TZ: "Asia/Shanghai"
 ---

@@ -1,6 +1,6 @@
 package com.opspilot.identity;
 
-import com.opspilot.MySqlIntegrationTest;
+import com.opspilot.NorthLedgerIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** 首个管理员引导的数据库边界测试。 */
 @SpringBootTest
 @ActiveProfiles("test")
-class BootstrapAdministratorIntegrationTest extends MySqlIntegrationTest {
+class BootstrapAdministratorIntegrationTest extends NorthLedgerIntegrationTest {
 
     @Autowired
     private BootstrapAdministrator bootstrapAdministrator;

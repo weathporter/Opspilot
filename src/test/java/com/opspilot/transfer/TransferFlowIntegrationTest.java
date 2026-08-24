@@ -1,6 +1,6 @@
 package com.opspilot.transfer;
 
-import com.opspilot.MySqlIntegrationTest;
+import com.opspilot.NorthLedgerIntegrationTest;
 import com.opspilot.account.AccountApplicationService;
 import com.opspilot.account.AccountRepository;
 import com.opspilot.account.CreateAccountRequest;
@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-class TransferFlowIntegrationTest extends MySqlIntegrationTest {
+class TransferFlowIntegrationTest extends NorthLedgerIntegrationTest {
 
     /** 用于准备账户并读取转账后的余额。 */
     @Autowired

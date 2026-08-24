@@ -73,6 +73,32 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+        - name: wait-for-redis
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - >-
+              until nc -z -w 2 "$REDIS_HOST" "$REDIS_PORT";
+              do echo "waiting for redis ${REDIS_HOST}:${REDIS_PORT}"; sleep 2; done
+          env:
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
@@ -90,6 +116,18 @@ spec:
                 secretKeyRef:
                   name: {{ include "opspilot.databaseSecretName" . }}
                   key: database-password
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opspilot.databaseSecretName" . }}
+                  key: redis-password
+            {{- if .Values.redis.tls.trustStore.enabled }}
+            - name: SPRING_SSL_BUNDLE_JKS_REDIS_TRUSTSTORE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "redis.tls.trustStore.existingSecret is required when the custom truststore is enabled" .Values.redis.tls.trustStore.existingSecret }}
+                  key: {{ .Values.redis.tls.trustStore.passwordKey }}
+            {{- end }}
             - name: BOOTSTRAP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -119,6 +157,11 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if .Values.redis.tls.trustStore.enabled }}
+            - name: redis-truststore
+              mountPath: /var/run/secrets/northledger/redis
+              readOnly: true
+            {{- end }}
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
@@ -151,6 +194,14 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 128Mi
+        {{- if .Values.redis.tls.trustStore.enabled }}
+        - name: redis-truststore
+          secret:
+            secretName: {{ required "redis.tls.trustStore.existingSecret is required when the custom truststore is enabled" .Values.redis.tls.trustStore.existingSecret }}
+            items:
+              - key: {{ .Values.redis.tls.trustStore.key }}
+                path: truststore.p12
+        {{- end }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

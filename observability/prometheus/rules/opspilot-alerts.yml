@@ -63,6 +63,47 @@ groups:
           summary: "OpsPilot JVM堆使用率超过85%"
           description: "观察GC趋势，确认是否存在持续增长或内存泄漏。"
 
+  # Redis 同时承担共享会话与业务缓存，因此可用性、内存压力和意外淘汰需要独立观察。
+  - name: northledger-redis
+    rules:
+      - alert: RedisUnavailable
+        # 同时覆盖两种 exporter 行为：HTTP 抓取成功但 redis_up=0，以及后端连接失败导致整次抓取 up=0。
+        expr: (redis_up{job="redis"} == 0) or (up{job="redis"} == 0)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NorthLedger Redis不可用"
+          description: "共享会话可能无法读取，总览缓存会尝试回源MySQL。先确认容器、认证和网络。"
+          runbook_url: "https://github.com/weathporter/Opspilot/blob/main/docs/runbooks/redis-degradation.md"
+
+      - alert: RedisMemoryPressure
+        # 只有配置了 maxmemory 才计算比例；本地上限 128MiB，生产阈值需结合真实基线调整。
+        expr: |
+          redis_memory_max_bytes{job="redis"} > 0
+          and
+          redis_memory_used_bytes{job="redis"}
+          /
+          redis_memory_max_bytes{job="redis"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "NorthLedger Redis内存使用率超过85%"
+          description: "检查会话数量、TTL、缓存键和maxmemory；noeviction下继续写入可能被拒绝。"
+          runbook_url: "https://github.com/weathporter/Opspilot/blob/main/docs/runbooks/redis-degradation.md"
+
+      - alert: RedisUnexpectedEviction
+        # 共享实例使用 noeviction，任何淘汰增长都表示配置漂移或连接到了错误实例。
+        expr: increase(redis_evicted_keys_total{job="redis"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "NorthLedger Redis出现非预期键淘汰"
+          description: "核对maxmemory-policy并确认有效会话没有被淘汰。"
+          runbook_url: "https://github.com/weathporter/Opspilot/blob/main/docs/runbooks/redis-degradation.md"
+
   # 主机容量与应用规则分组，后续可独立设置计算周期或通知路由。
   - name: linux-capacity
     rules:

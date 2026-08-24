@@ -1,4 +1,4 @@
-# NorthLedger 完整本地业务拓扑：浏览器 -> 非 root Nginx/React -> Spring Boot -> MySQL。
+# NorthLedger 完整本地业务拓扑：浏览器 -> 非 root Nginx/React -> Spring Boot -> MySQL/Redis。
 # 监控栈由 compose.observability.yml 叠加，业务与观测边界保持清晰。
 # Compose 项目标识沿用仓库目录名，以便原地升级并继续挂载既有持久化数据卷。
 
@@ -30,6 +30,38 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  redis:
+    # 固定补丁版本保证 ACL、AOF 和内存策略行为可复现，不使用会漂移的 latest。
+    image: redis:7.4.10-alpine
+    environment:
+      # 密码只来自本机 .env；启动脚本把它转换为 ACL 哈希，不放入 redis-server 命令行。
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDIS_MAXMEMORY: 128mb
+      TZ: Asia/Shanghai
+    entrypoint: ["/bin/sh", "/opt/northledger/redis-entrypoint.sh"]
+    ports:
+      # 仅供本机 redis-cli 学习和排障，局域网/公网无法直接连接。
+      - "127.0.0.1:16379:6379"
+    volumes:
+      - ./deploy/redis/entrypoint.sh:/opt/northledger/redis-entrypoint.sh:ro
+      - redis_data:/data
+    tmpfs:
+      # ACL 哈希文件仅存在于内存，容器删除后不会落入镜像层或数据卷。
+      - /run/redis:size=1m,mode=0700
+    networks:
+      - opspilot
+    healthcheck:
+      # REDISCLI_AUTH 通过环境传给 redis-cli，不把密码显示在 ps 命令参数中。
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli -h 127.0.0.1 ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -42,6 +74,13 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/opspilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       DB_USERNAME: opspilot
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      # 同一 Redis 实例用独立命名空间保存会话与可重建的总览缓存。
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USERNAME: default
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+      REDIS_CONNECT_TIMEOUT: 1s
+      REDIS_TIMEOUT: 1s
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:?set BOOTSTRAP_ADMIN_USERNAME in .env}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?set BOOTSTRAP_ADMIN_PASSWORD in .env}
       BOOTSTRAP_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:-System Administrator}
@@ -58,6 +97,8 @@ services:
           - opspilot-backend
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     read_only: true
     tmpfs:
@@ -101,3 +142,6 @@ networks:
 volumes:
   mysql_data:
     name: opspilot_mysql_data
+  # AOF 保存会话与缓存重启状态；缓存可重建，但会话需要在普通容器重建后继续存在。
+  redis_data:
+    name: opspilot_redis_data

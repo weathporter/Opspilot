@@ -1,6 +1,6 @@
 package com.opspilot.security;
 
-import com.opspilot.MySqlIntegrationTest;
+import com.opspilot.NorthLedgerIntegrationTest;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class SecurityContractIntegrationTest extends MySqlIntegrationTest {
+class SecurityContractIntegrationTest extends NorthLedgerIntegrationTest {
 
     /** 进程内 HTTP 客户端；不会占用 18080 端口。 */
     @Autowired

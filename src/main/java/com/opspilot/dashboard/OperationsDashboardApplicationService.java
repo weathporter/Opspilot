@@ -6,6 +6,7 @@ import com.opspilot.transfer.TransferOrderRepository;
 import com.opspilot.transfer.TransferResponse;
 import com.opspilot.transfer.TransferStatus;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,7 +50,14 @@ public class OperationsDashboardApplicationService {
         this.version = version;
     }
 
-    /** 以数据库统计和固定 24 小时窗口生成一次一致的运行快照。 */
+    /**
+     * 以数据库统计和固定 24 小时窗口生成一次一致的运行快照。
+     *
+     * <p>总览是可重建的只读投影，允许 30～40 秒最终一致，因此可以使用 Redis 降低重复聚合查询。
+     * 固定键 {@code current} 表示当前接口没有租户或筛选维度；账户/转账写入会在事务提交后主动失效，
+     * TTL 则负责处理漏失效和 Redis 清理失败。资金事实本身始终只写 MySQL。</p>
+     */
+    @Cacheable(cacheNames = DashboardCacheNames.OPERATIONS_SUMMARY, key = "'current'")
     @Transactional(readOnly = true)
     public OperationsSummaryResponse getSummary() {
         LocalDateTime now = LocalDateTime.now(clock).truncatedTo(ChronoUnit.MICROS);

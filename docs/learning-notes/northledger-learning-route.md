@@ -18,9 +18,9 @@
 
 ## 第 2 层：接管登录和权限
 
-原理：认证确认身份，授权限制职责，CSRF 保护带 Cookie 的修改请求，会话保存到 MySQL 以支持多个 API 副本。
+原理：认证确认身份，授权限制职责，CSRF 保护带 Cookie 的修改请求，会话保存到带 TTL 的 Redis 以支持多个 API 副本；MySQL 继续保存用户和角色事实。
 
-观察：分别以管理员、操作员、审计员登录，比较菜单与接口结果；查询 `SPRING_SESSION` 和 `audit_event`。
+观察：分别以管理员、操作员、审计员登录，比较菜单与接口结果；用 `redis-cli --scan --pattern 'northledger:session:*'` 观察会话键，用 MySQL 查询 `audit_event`。
 
 操作：阅读 [认证与权限 Runbook](../runbooks/authentication-and-access.md)，运行三组安全集成测试。
 
@@ -28,7 +28,7 @@
 
 复述：明确说明 401、403、Cookie、CSRF token 和 RBAC 的关系。
 
-验收：只借助浏览器网络面板和 MySQL，定位一次“登录后立即掉线”。
+验收：只借助浏览器网络面板、Redis 和 MySQL，定位一次“登录后立即掉线”。
 
 ## 第 3 层：掌握 Linux 与网络请求路径
 

@@ -31,6 +31,11 @@ scrape_configs:
     static_configs:
       - targets: ["app:18080"]
 
+  # Redis Exporter 使用受控凭据访问 Redis，再向 Prometheus 暴露无密码的运行指标。
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
   # node-exporter 反映 Linux 主机 CPU、内存、磁盘、文件系统和网络状态。
   - job_name: node
     static_configs:

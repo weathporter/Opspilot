@@ -15,8 +15,9 @@ Compose 适合单机复现；Kubernetes 负责多副本期望状态、滚动升�
   → React/Nginx Pod × 2
   → opspilot-backend Service
   → Spring Boot Pod × 2～4
-  → MySQL StatefulSet + PVC（本地学习）
-     或外部托管 MySQL（类生产）
+  ├─ MySQL StatefulSet + PVC（本地学习）
+  └─ Redis StatefulSet + PVC + Redis Exporter（本地学习）
+     生产覆盖改用外部高可用 MySQL 与 Redis
 ```
 
 ## 已实现资源
@@ -29,12 +30,13 @@ Compose 适合单机复现；Kubernetes 负责多副本期望状态、滚动升�
 | 计划中断保护 | API/Web PDB，minAvailable=1 | 节点维护时避免同时驱逐全部副本 |
 | 资源治理 | requests/limits | 提供调度依据并限制异常资源消耗 |
 | 容器安全 | 非 root、只读根文件系统、drop ALL、seccomp | 降低容器逃逸和持久化写入风险 |
-| 网络边界 | 默认拒绝入站，Web→API→MySQL 逐段放行 | 把调用链落实为最小网络权限 |
+| 网络边界 | 默认拒绝入站，Web→API→MySQL/Redis 与 Prometheus→Exporter 逐段放行 | 把调用链落实为最小网络权限 |
 | 权限边界 | 工作负载不挂 Token；operator Role 不读 Secret | 避免业务 Pod 获得无用集群权限 |
-| 启动时序 | API initContainer 等待数据库 TCP 就绪 | 避免 Flyway 在 MySQL 初始化期失败并触发无意义重启 |
-| 数据持久化 | MySQL StatefulSet + PVC | 用于学习 Pod 重建后数据保留 |
+| 启动时序 | API initContainer 等待 MySQL 与 Redis TCP 就绪 | 避免 Flyway/Session 在依赖初始化期失败并触发无意义重启 |
+| 数据持久化 | MySQL/Redis StatefulSet + PVC | 学习 Pod 重建后业务数据、AOF 和会话状态保留 |
+| Redis 可观测性 | Redis Exporter Deployment/Service | 让平台 Prometheus 抓取连接、内存、命中和淘汰指标 |
 | 配置密钥 | ConfigMap 与 Secret 分离 | 公开配置与敏感值使用不同生命周期 |
-| 发布验收 | Helm test 访问 Web Service `/health` | 在集群内验证 Nginx→API→MySQL readiness 链路 |
+| 发布验收 | Helm test 访问 Web Service `/health` | 在集群内验证 Nginx→API→MySQL/Redis readiness 链路 |
 
 ## 本机部署
 
@@ -44,7 +46,7 @@ Compose 适合单机复现；Kubernetes 负责多副本期望状态、滚动升�
 powershell -ExecutionPolicy Bypass -File scripts/k8s/deploy-minikube.ps1
 ```
 
-脚本会检查每个外部命令的退出状态，启动或复用 Minikube，构建 API/Web 运行时镜像，显式加载 API、Web、MySQL 三个镜像，以 Helm 4 的 `--rollback-on-failure` 执行失败自动回滚，最后验证 rollout、Release Test 和资源状态。
+脚本会检查每个外部命令的退出状态，启动或复用 Minikube，构建 API/Web 运行时镜像，并在本机缺失依赖镜像时先拉取固定标签，再通过一次性 Docker archive 显式覆盖加载 API、Web、MySQL、Redis、Redis Exporter 和 BusyBox；archive 加载后立即删除，避免 BuildKit manifest list 与节点同标签缓存让旧镜像继续运行。它从进程环境或已忽略的本机 `.env` 读取运行密钥，通过 stdin 创建 `opspilot-runtime` Secret，Helm values 和命令行不出现明文密码；随后按实际版本选用 Helm 3 的 `--atomic` 或 Helm 4 的 `--rollback-on-failure` 执行失败自动回滚。开发环境重复使用同一版本标签时，脚本还会主动滚动 API/Web，避免 Helm 因 Pod 模板未变化而继续运行旧进程；最后验证 API/Web/Redis/Exporter rollout、Release Test 和资源状态。
 
 镜像网络受限，或已有集群残留失效 Ingress Webhook 时，不应删除集群级安全配置；使用本地降级参数：
 
@@ -66,22 +68,33 @@ kubectl -n opspilot port-forward service/opspilot-web 18000:8080
 powershell -ExecutionPolicy Bypass -File scripts/k8s/smoke-test.ps1
 ```
 
-它会真实创建两个账户、完成转账、用相同幂等键重放，并检查两条流水和 `balanced=true`。
+它会真实创建账户、完成转账、用相同幂等键重放，并检查两条流水和 `balanced=true`。
+同时，它会验证管理员会话确实写入 Redis、运维总览缓存拥有有限 TTL，再提交一次账户写入并证明缓存键已按事务提交事件删除、下次读取可重新生成，最后主动登出清理会话。
+
+已有 MySQL PVC 时，数据库内账号密码仍是首次初始化值。部署脚本会优先复用与该 PVC
+匹配的 `opspilot-database`（旧版）或 `opspilot-runtime`（当前版）Secret；如果数据卷存在但
+匹配 Secret 丢失，脚本会拒绝升级，避免“只改 Secret、数据库密码未变”导致新 Pod 全部不可用。
+同样，已有 Redis PVC 时脚本会复用 `opspilot-runtime` 中的当前密码，不会把 `.env`
+中新值当成隐式轮换。如果确实要轮换本地内置 Redis，必须按 Runbook 协调更新
+`opspilot-runtime`、Redis StatefulSet、API Deployment 和 Redis Exporter。类生产外部 Redis 使用
+`secrets.existingSecret` 指定的对象（示例为 `opspilot-production-runtime`）且没有内置 StatefulSet；
+应先按企业中间件平台流程轮换服务端，再只滚动 API 与 Redis Exporter。两条流程都必须
+验证登录、readiness、缓存 TTL 与监控指标，不可混用资源名。
 
 ## 发布与回滚
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/k8s/deploy-minikube.ps1 -Version 0.1.1
+powershell -ExecutionPolicy Bypass -File scripts/k8s/deploy-minikube.ps1 -Version 0.3.0
 powershell -ExecutionPolicy Bypass -File scripts/k8s/rollback.ps1
 ```
 
 Helm 保存应用发布历史，Deployment 保留 5 个 ReplicaSet revision；前者负责应用级回滚，后者便于单工作负载排障。
 
-## 数据库边界
+## MySQL 与 Redis 的生产边界
 
-默认单副本 MySQL StatefulSet 是学习环境，不是生产高可用方案。它用于证明稳定身份、PVC、Secret、探针、资源限制和 NetworkPolicy。
+默认单副本 MySQL 与 Redis StatefulSet 都是学习环境，不是生产高可用方案。它们用于证明稳定身份、PVC、Secret、探针、资源限制、服务发现和 NetworkPolicy。Redis AOF 能覆盖普通 Pod 重建，但不能替代跨节点高可用与受控备份。
 
-类生产部署使用 `values-production.example.yaml`，关闭内置 MySQL，连接企业托管数据库，并要求外部密钥系统预建 Secret。这样既展示 K8s 存储能力，又不会错误声称“一个 MySQL Pod 就是生产高可用”。
+类生产部署使用 `values-production.example.yaml`，关闭内置 MySQL/Redis，连接企业托管高可用服务，并要求外部密钥系统预建 Secret。示例启用 `rediss://`，Spring Boot 通过只读 PKCS12 truststore 校验企业私有 CA，Redis Exporter 使用同一 Secret 中的 PEM CA；公有 CA 场景可以关闭自定义 truststore 并使用 JVM 默认信任库。这样既展示 K8s 存储与中间件运维能力，又不会错误声称“一个 StatefulSet Pod 就是生产高可用”。
 
 ## 排障顺序
 

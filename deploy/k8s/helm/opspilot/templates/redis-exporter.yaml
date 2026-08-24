@@ -1,0 +1,102 @@
+{{- if .Values.redisExporter.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opspilot-redis-exporter
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opspilot
+      app.kubernetes.io/component: redis-exporter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opspilot
+        app.kubernetes.io/component: redis-exporter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "9121"
+        # Chart 自建 Secret 轮换时让 exporter 与 Redis/API 使用同一代凭据。
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: opspilot-redis-exporter
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis-exporter
+          image: "{{ .Values.redisExporter.image.repository }}:{{ .Values.redisExporter.image.tag }}"
+          imagePullPolicy: {{ .Values.redisExporter.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: 9121
+          env:
+            - name: REDIS_ADDR
+              value: {{ printf "%s://%s:%v" (ternary "rediss" "redis" .Values.redis.tls.enabled) .Values.redis.host .Values.redis.port | quote }}
+            - name: REDIS_USER
+              value: {{ .Values.redis.username | quote }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "opspilot.databaseSecretName" . }}
+                  key: redis-password
+            {{- if .Values.redis.tls.trustStore.enabled }}
+            - name: REDIS_EXPORTER_TLS_CA_CERT_FILE
+              value: /var/run/secrets/northledger/redis/ca.crt
+            {{- end }}
+          resources:
+            {{- toYaml .Values.redisExporter.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.redis.tls.trustStore.enabled }}
+          volumeMounts:
+            - name: redis-ca
+              mountPath: /var/run/secrets/northledger/redis
+              readOnly: true
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            periodSeconds: 5
+            failureThreshold: 3
+            timeoutSeconds: 2
+      {{- if .Values.redis.tls.trustStore.enabled }}
+      volumes:
+        - name: redis-ca
+          secret:
+            secretName: {{ required "redis.tls.trustStore.existingSecret is required when the custom truststore is enabled" .Values.redis.tls.trustStore.existingSecret }}
+            items:
+              - key: {{ .Values.redis.tls.trustStore.caKey }}
+                path: ca.crt
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opspilot-redis-exporter
+  labels:
+    {{- include "opspilot.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: opspilot
+    app.kubernetes.io/component: redis-exporter
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+{{- end }}

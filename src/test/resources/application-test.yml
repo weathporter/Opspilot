@@ -13,9 +13,12 @@ spring:
     # 关闭启动横幅，减少测试输出噪声，让失败堆栈更醒目。
     banner-mode: off
   session:
-    jdbc:
-      # V2 已由 Flyway 创建会话表，测试启动时不允许 Spring Session 再次初始化同一结构。
-      initialize-schema: never
+    # 测试必须验证与运行环境相同的 Redis 会话实现，不能切回 JDBC 或内存会话掩盖配置错误。
+    store-type: redis
+    redis:
+      repository-type: default
+      namespace: northledger:session
+      flush-mode: on_save
 
 # 仅用于临时 Testcontainers 数据库的引导管理员；不是生产凭据，也不会进入最终镜像环境变量。
 northledger:

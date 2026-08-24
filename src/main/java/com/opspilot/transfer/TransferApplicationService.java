@@ -5,6 +5,8 @@ import com.opspilot.account.AccountRepository;
 import com.opspilot.common.BusinessRuleException;
 import com.opspilot.common.DuplicateResourceException;
 import com.opspilot.common.ResourceNotFoundException;
+import com.opspilot.dashboard.BusinessDataChangedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,16 +37,21 @@ public class TransferApplicationService {
     /** 统一、可测试且能控制数据库精度的业务时间源。 */
     private final Clock clock;
 
+    /** 只在新转账完成时发布变化，幂等重放不会重复清缓存。 */
+    private final ApplicationEventPublisher eventPublisher;
+
     public TransferApplicationService(
             AccountRepository accountRepository,
             TransferOrderRepository transferOrderRepository,
             LedgerEntryRepository ledgerEntryRepository,
-            Clock clock
+            Clock clock,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.accountRepository = accountRepository;
         this.transferOrderRepository = transferOrderRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -129,6 +136,10 @@ public class TransferApplicationService {
 
         // JPA 脏检查会在提交前自动生成账户余额和订单状态的 UPDATE。
         transferOrder.complete(now);
+        // 前面的两个 replay 快速路径已经返回，因此这里只代表一笔新完成的转账。
+        eventPublisher.publishEvent(new BusinessDataChangedEvent(
+                BusinessDataChangedEvent.ChangeType.TRANSFER_COMPLETED
+        ));
         return TransferResponse.from(transferOrder);
     }
 

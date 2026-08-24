@@ -1,0 +1,110 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Redis 降级 Runbook",
+      "type": "link",
+      "url": "https://github.com/weathporter/Opspilot/blob/main/docs/runbooks/redis-degradation.md"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "redis_exporter 能完成认证并读取 Redis 时为 1。为 0 时共享会话可能不可用，业务缓存会尝试回源 MySQL。",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{"options": {"0": {"color": "red", "text": "DOWN"}, "1": {"color": "green", "text": "UP"}}, "type": "value"}],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "max((redis_up{job=\"redis\"} == 1) and on(instance, job) (up{job=\"redis\"} == 1)) or vector(0)", "refId": "A"}],
+      "title": "Redis 状态",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "used_memory / maxmemory。共享实例使用 noeviction，逼近上限时新写入会失败，而不是静默淘汰会话。",
+      "fieldConfig": {"defaults": {"max": 1, "min": 0, "unit": "percentunit", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.7}, {"color": "red", "value": 0.85}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 4, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "redis_memory_used_bytes{job=\"redis\"} / clamp_min(redis_memory_max_bytes{job=\"redis\"}, 1)", "refId": "A"}],
+      "title": "Redis 内存使用率",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "当前客户端连接数，包含 API 实例、exporter 与人工 redis-cli。异常增长时检查连接泄漏和实例数变化。",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 5, "w": 6, "x": 10, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "redis_connected_clients{job=\"redis\"}", "refId": "A"}],
+      "title": "客户端连接数",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "近 5 分钟意外淘汰总数。当前 noeviction 策略下应始终为 0，非零表示配置漂移或目标实例错误。",
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 0},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"expr": "increase(redis_evicted_keys_total{job=\"redis\"}[5m])", "refId": "A"}],
+      "title": "近5分钟淘汰键",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Redis 每秒处理命令数，用于把延迟、连接与业务访问趋势对齐。",
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 5},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "single", "sort": "none"}},
+      "targets": [{"expr": "rate(redis_commands_processed_total{job=\"redis\"}[1m])", "legendFormat": "commands/s", "refId": "A"}],
+      "title": "Redis 命令吞吐",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Redis 全局 keyspace 命中与未命中趋势。它同时包含会话和缓存命令，只用于判断变化，不等同于单一业务缓存命中率。",
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 5},
+      "id": 6,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"expr": "rate(redis_keyspace_hits_total{job=\"redis\"}[1m])", "legendFormat": "hits/s", "refId": "A"},
+        {"expr": "rate(redis_keyspace_misses_total{job=\"redis\"}[1m])", "legendFormat": "misses/s", "refId": "B"}
+      ],
+      "title": "Keyspace 命中与未命中",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "应用主动吞掉并记录的缓存错误，按固定 get/put/evict/clear 分类。出现增长时总览可能正在回源 MySQL。",
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 5},
+      "id": 7,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"expr": "sum by (operation) (rate(northledger_cache_errors_total[5m]))", "legendFormat": "{{operation}}", "refId": "A"}],
+      "title": "缓存降级错误",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 41,
+  "tags": ["northledger", "redis", "operations"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "NorthLedger Redis 运行状态",
+  "uid": "northledger-redis",
+  "version": 1
+}

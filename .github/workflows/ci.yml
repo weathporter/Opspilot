@@ -24,8 +24,8 @@ jobs:
           java-version: "17"
           cache: maven
 
-      - name: Run Java and real MySQL tests
-        # GitHub 的 Ubuntu runner 已提供 Docker；Testcontainers 会启动临时 MySQL 8.4。
+      - name: Run Java with real MySQL and Redis tests
+        # GitHub 的 Ubuntu runner 已提供 Docker；Testcontainers 会启动临时 MySQL 8.4 与认证 Redis。
         run: mvn -B -ntp test
 
       - name: Set up Node.js
@@ -39,9 +39,9 @@ jobs:
         working-directory: frontend
         run: npm ci --ignore-scripts
 
-      - name: Reject reachable high or critical npm advisories
+      - name: Reject reachable moderate, high or critical npm advisories
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=moderate
 
       - name: Build React production assets
         working-directory: frontend
@@ -50,6 +50,9 @@ jobs:
       - name: Validate atomic Linux API and web release contract
         shell: pwsh
         run: ./scripts/tests/validate-linux-release.ps1
+
+      - name: Verify EnvironmentFile parser treats values as data
+        run: bash scripts/tests/test-env-file-parser.sh
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -61,7 +64,24 @@ jobs:
           helm lint deploy/k8s/helm/opspilot
           --set-string secrets.databasePassword=ci-database-password
           --set-string secrets.mysqlRootPassword=ci-root-password
+          --set-string secrets.redisPassword=ci-redis-password
           --set-string secrets.bootstrapAdminPassword=ci-bootstrap-password
+
+      - name: Validate Redis delivery contracts
+        shell: pwsh
+        run: ./scripts/tests/validate-redis-delivery.ps1
+
+      - name: Lint and render external TLS production profile
+        run: |
+          helm lint deploy/k8s/helm/opspilot -f deploy/k8s/helm/opspilot/values-production.example.yaml
+          helm template northledger deploy/k8s/helm/opspilot -f deploy/k8s/helm/opspilot/values-production.example.yaml > /tmp/northledger-production.yaml
+
+      - name: Validate Prometheus configuration and alert rules
+        run: >-
+          docker run --rm --entrypoint /bin/promtool
+          -v "$PWD/observability/prometheus:/etc/prometheus:ro"
+          prom/prometheus:v3.13.0
+          check config /etc/prometheus/prometheus.yml
 
       - name: Build immutable API and web images
         run: |

@@ -10,7 +10,7 @@ app_user ──1:N── app_user_role
     ├─ BCrypt 密码哈希用于认证
     └─ 角色用于授权
 
-浏览器 SESSION Cookie ──▶ SPRING_SESSION ──1:N── SPRING_SESSION_ATTRIBUTES
+浏览器 SESSION Cookie ──▶ Redis northledger:session:*（带 TTL）
 
 HTTP 请求 ──▶ CorrelationIdFilter ──▶ Spring Security ──▶ Controller
                     │                       │
@@ -20,7 +20,7 @@ HTTP 请求 ──▶ CorrelationIdFilter ──▶ Spring Security ──▶ Co
 
 - `app_user` 是身份事实，保存用户名、显示名、状态和密码哈希。
 - `app_user_role` 是职责事实，一个用户可以有多个角色。
-- `SPRING_SESSION` 保存会话元数据，浏览器只持有随机会话标识，不持有角色真相。
+- Redis 的 `northledger:session:*` 键保存会话元数据和认证属性，浏览器只持有随机会话标识，不持有角色真相。
 - `audit_event` 保存操作证据，没有删除接口。
 - `traceId` 把浏览器错误、应用日志和审计记录串到同一次请求。
 
@@ -31,7 +31,7 @@ HTTP 请求 ──▶ CorrelationIdFilter ──▶ Spring Security ──▶ Co
 3. 用户提交用户名和密码；前端读取该 Cookie，放入 `X-XSRF-TOKEN` 请求头。
 4. Spring Security 先验证 CSRF，再由 `DatabaseUserDetailsService` 从 MySQL 读取用户。
 5. BCrypt 使用数据库中的哈希校验密码，不解密、不比较明文存储。
-6. 成功后执行会话固定攻击防护，创建新的会话标识并把会话保存到 MySQL。
+6. 成功后执行会话固定攻击防护，创建新的会话标识并把会话保存到 Redis；用户、角色和密码哈希仍从 MySQL 读取。
 7. 服务端写入登录成功审计，Micrometer 增加固定标签的成功计数。
 8. React 再读取当前会话，得到显示名和角色，呈现相应页面。
 
@@ -72,12 +72,22 @@ Compose 从本机 `.env` 注入，Linux 从权限受控的 EnvironmentFile 注�
 - `SESSION` 应为 HttpOnly，JavaScript 不能读取；`XSRF-TOKEN` 必须可读，前端才能写请求头。
 - 修改请求应同时携带 `X-XSRF-TOKEN` 请求头。
 
-### MySQL
+### Redis 与 MySQL
+
+Redis 中会话键使用命名空间隔离并带过期时间。命令中的密码应通过受控环境变量或交互方式提供，不要把真实密码写进脚本、终端历史和截图：
+
+```bash
+redis-cli --user default --pass "$REDIS_PASSWORD" --scan --pattern 'northledger:session:*'
+redis-cli --user default --pass "$REDIS_PASSWORD" TTL '<上一步得到的会话键>'
+```
+
+正常结果：登录后能够扫描到 `northledger:session:*` 键，`TTL` 返回正整数并随时间递减；退出后对应会话失效。`-1` 表示没有过期时间，是需要排查的异常；`-2` 表示键不存在。
+
+MySQL 只查询身份、角色和不可变审计事实：
 
 ```sql
 SELECT username, display_name, status, created_at FROM app_user;
 SELECT user_id, role FROM app_user_role ORDER BY user_id, role;
-SELECT primary_id, session_id, creation_time, last_access_time, expiry_time FROM SPRING_SESSION;
 SELECT event_type, outcome, actor, target_type, target_id, trace_id, source_ip, occurred_at
 FROM audit_event
 ORDER BY occurred_at DESC
@@ -110,9 +120,9 @@ sum by (outcome) (increase(northledger_authentication_attempts_total[15m]))
 
 ### 登录后下一次请求又变成 401
 
-观察：浏览器是否保存并发送 `SESSION`；`SPRING_SESSION` 是否存在对应记录；Nginx 是否把 Cookie 原样转发；数据库时间和会话过期时间是否合理。
+观察：浏览器是否保存并发送 `SESSION`；Redis 中是否存在对应 `northledger:session:*` 键且 TTL 为正；Nginx 是否把 Cookie 原样转发；应用与 Redis 的连接、认证和系统时间是否正常。
 
-处理：检查 Cookie 的 Domain、Path、SameSite 和 Secure。纯 HTTP 本地环境必须是 `SESSION_COOKIE_SECURE=false`，HTTPS 生产入口必须设为 `true`。
+处理：先检查 Cookie 的 Domain、Path、SameSite 和 Secure。纯 HTTP 本地环境必须是 `SESSION_COOKIE_SECURE=false`，HTTPS 生产入口必须设为 `true`；再检查 `SPRING_DATA_REDIS_HOST/PORT/USERNAME/PASSWORD` 与 Redis 日志。不要通过关闭认证或把 Redis 暴露到公网来“修复”连接问题。
 
 ### 管理员接口返回 403
 

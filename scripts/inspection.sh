@@ -32,8 +32,30 @@ df -hT
 df -ih
 
 section "监听端口"
-# 验证 80/18080/3306 等端口是否监听，以及由哪个进程占用。
+# 验证 80/18080/3306/6379 等端口是否监听，以及由哪个进程占用。
 ss -lntp || true
+
+section "Redis连通与内存策略"
+# 从 root 管理、服务组只读的环境文件取得连接信息；REDISCLI_AUTH 不会把密码写进命令参数。
+if command -v redis-cli >/dev/null 2>&1 && [[ -r /etc/opspilot/opspilot.env ]]; then
+  # 逐项解析所需字段，不 source 整份 systemd EnvironmentFile，也不把数据库/管理员密钥 export 给子进程。
+  redis_host="$(read_env_value /etc/opspilot/opspilot.env REDIS_HOST || printf '127.0.0.1')"
+  redis_port="$(read_env_value /etc/opspilot/opspilot.env REDIS_PORT || printf '6379')"
+  redis_username="$(read_env_value /etc/opspilot/opspilot.env REDIS_USERNAME || printf 'default')"
+  redis_password="$(read_env_value /etc/opspilot/opspilot.env REDIS_PASSWORD || true)"
+  if [[ -n "$redis_password" ]]; then
+    REDISCLI_AUTH="$redis_password" redis-cli --no-auth-warning \
+      --user "$redis_username" -h "$redis_host" -p "$redis_port" PING || true
+    REDISCLI_AUTH="$redis_password" redis-cli --no-auth-warning \
+      --user "$redis_username" -h "$redis_host" -p "$redis_port" INFO memory \
+      | grep -E '^(used_memory_human|maxmemory_human|maxmemory_policy):' || true
+  else
+    warn "REDIS_PASSWORD未配置，跳过认证检查"
+  fi
+  unset redis_host redis_port redis_username redis_password
+else
+  warn "redis-cli或受控环境文件不可用，跳过Redis协议检查"
+fi
 
 section "OpsPilot systemd状态"
 # 查看 Active/退出码、主进程 PID、资源消耗和最近几条单元日志。

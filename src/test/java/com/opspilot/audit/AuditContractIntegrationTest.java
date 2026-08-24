@@ -1,6 +1,6 @@
 package com.opspilot.audit;
 
-import com.opspilot.MySqlIntegrationTest;
+import com.opspilot.NorthLedgerIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Spring Boot 测试默认关闭指标导出；本类专门验证 Prometheus，因此显式恢复真实观测配置。
 @AutoConfigureObservability
 @ActiveProfiles("test")
-class AuditContractIntegrationTest extends MySqlIntegrationTest {
+class AuditContractIntegrationTest extends NorthLedgerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;

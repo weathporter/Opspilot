@@ -34,9 +34,10 @@ fi
 
 if [[ "$SKIP_PACKAGES" == false ]]; then
   require_command dnf
-  log "安装JDK、Nginx、MySQL客户端和基础排障工具"
-  # headless JDK 不含桌面组件；curl/tar/gzip/rsync/mysql 用于检查、发布、备份和诊断。
-  dnf install -y java-17-openjdk-headless nginx curl tar gzip rsync mysql policycoreutils-python-utils
+  log "安装JDK、Nginx、MySQL/Redis客户端和基础排障工具"
+  # headless JDK 不含桌面组件；curl/tar/gzip/rsync/mysql/redis-cli 用于检查、发布和诊断。
+  # redis 包只为主机提供 redis-cli，本脚本不启用主机 redis.service，实际实例仍由容器管理。
+  dnf install -y java-17-openjdk-headless nginx curl tar gzip rsync mysql redis policycoreutils-python-utils
 fi
 
 # 专用系统账号无交互 shell，降低服务凭据被用于登录的风险；重复执行脚本不会重复创建。
@@ -59,6 +60,12 @@ install -D -o root -g root -m 0644 "${PROJECT_ROOT}/deploy/linux/logrotate/opspi
 if [[ ! -f /etc/opspilot/opspilot.env ]]; then
   install -o root -g opspilot -m 0640 "${PROJECT_ROOT}/deploy/linux/env/opspilot.env.example" /etc/opspilot/opspilot.env
   warn "已创建 /etc/opspilot/opspilot.env，请先填写数据库与首个管理员配置"
+fi
+
+# Redis 容器只获得自身密码和内存上限；不能复用应用环境文件，否则数据库与管理员密钥会进入容器环境。
+if [[ ! -f /etc/opspilot/redis.env ]]; then
+  install -o root -g root -m 0600 "${PROJECT_ROOT}/deploy/linux/env/redis.env.example" /etc/opspilot/redis.env
+  warn "已创建 /etc/opspilot/redis.env，请填写与应用 REDIS_PASSWORD 一致的 Redis 专用密钥"
 fi
 
 # Nginx 只获得读取发布静态文件所需的补充组权限，不获得环境文件写权限或服务账号 shell。
@@ -85,4 +92,4 @@ systemctl enable nginx opspilot
 systemctl restart nginx
 
 log "主机初始化完成"
-log "下一步：编辑 /etc/opspilot/opspilot.env，然后执行 build.sh 与 deploy.sh"
+log "下一步：编辑 /etc/opspilot/opspilot.env 与 /etc/opspilot/redis.env，然后执行 build.sh 与 deploy.sh"

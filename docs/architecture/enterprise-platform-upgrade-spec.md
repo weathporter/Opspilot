@@ -1,5 +1,7 @@
 # 企业资金交易平台生产化升级规格
 
+> 版本说明：本文记录最初的身份与权限生产化规格。0.3.0 已将运行时会话从 MySQL 迁移到 Redis；缓存、失效、降级和部署边界以 [Redis 集成规格](redis-integration-spec.md) 为准，资金业务表与审计表仍以 MySQL 为唯一事实来源。
+
 ## 1. 产品定位
 
 本项目建设一个可真实运行的企业资金账户与交易清结算平台，并围绕它完成 Linux、Docker、Kubernetes、MySQL、自动交付、可观测性和故障处置实践。平台首先是完整业务系统，运维能力通过部署环境、运行指标、告警、备份恢复、发布回滚和故障演练体现，而不是把前端改造成工具集合。
@@ -13,7 +15,7 @@
 完成后必须满足：
 
 1. 用户凭用户名和密码建立服务端会话，密码只保存安全哈希。
-2. 会话保存到 MySQL，使多个 API 副本能够读取同一登录状态。
+2. 会话保存到带 TTL 的 Redis，使多个 API 副本能够读取同一登录状态；Redis 不保存账户、交易和审计事实。
 3. 所有业务接口默认需要登录，公开范围只保留健康、信息和 Prometheus 指标端点。
 4. 管理员、业务操作员和审计员拥有不同权限；未登录返回 401，权限不足返回 403。
 5. React 通过同源 Cookie 维持会话，并为所有非安全 HTTP 方法附加 CSRF 请求头。
@@ -89,7 +91,7 @@
 
 ### 6.2 会话
 
-`SPRING_SESSION` 与 `SPRING_SESSION_ATTRIBUTES` 使用 Spring Session JDBC 官方结构，由 Flyway 创建。应用配置禁止 Spring Session 自行建表，保证数据库结构只有一个版本事实来源。
+0.3.0 使用 Spring Session Redis 保存共享会话，命名空间固定为 `northledger:session`，由 Redis TTL 负责过期。浏览器仍只持有 HttpOnly 的随机 `SESSION` Cookie。Flyway V2 创建的 `SPRING_SESSION` 与 `SPRING_SESSION_ATTRIBUTES` 作为历史兼容结构保留，但运行时不再读写；已经执行的迁移不做回改。
 
 ### 6.3 安全审计
 
@@ -154,7 +156,7 @@
 6. 退出后旧会话不能继续访问受保护接口。
 7. MySQL中能查询到成功、失败和退出审计记录，记录不含密码。
 8. Prometheus能查询成功和失败认证计数，指标没有用户名标签。
-9. 多个 API 副本连接同一 MySQL 时可以读取同一会话。
+9. 多个 API 副本连接同一 Redis 时可以读取同一会话；Redis 停止时已登录请求的会话能力受影响，但资金数据仍安全保存在 MySQL。
 10. Maven测试、前端构建、Docker Compose配置校验和Helm渲染全部通过。
 
 ## 11. 官方实现依据
@@ -163,6 +165,6 @@
 - Spring Security 请求授权：https://docs.spring.io/spring-security/reference/6.5/servlet/authorization/authorize-http-requests.html
 - Spring Security SPA CSRF：https://docs.spring.io/spring-security/reference/6.5/servlet/exploits/csrf.html#csrf-integration-javascript-spa
 - Spring Security MockMvc CSRF测试：https://docs.spring.io/spring-security/reference/6.5/servlet/test/mockmvc/csrf.html
-- Spring Session JDBC与Spring Boot：https://docs.spring.io/spring-session/reference/3.5/guides/boot-jdbc.html
+- Spring Session Redis 与 Spring Boot：https://docs.spring.io/spring-session/reference/3.5/guides/boot-redis.html
 - Spring Boot 3.5结构化日志：https://docs.spring.io/spring-boot/3.5/reference/features/logging.html#features.logging.structured
 - Spring Boot 3.5 Testcontainers服务连接：https://docs.spring.io/spring-boot/3.5/reference/testing/testcontainers.html

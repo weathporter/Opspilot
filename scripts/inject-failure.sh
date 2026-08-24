@@ -19,7 +19,7 @@ while [[ $# -gt 0 ]]; do
     --size-mb) SIZE_MB="${2:?--size-mb需要参数}"; shift 2 ;;
     --confirm) CONFIRM="${2:?--confirm需要参数}"; shift 2 ;;
     -h|--help)
-      echo "仅用于实验机：bash scripts/inject-failure.sh --scenario cpu|disk|stop-app --confirm LAB_ONLY"
+      echo "仅用于实验机：bash scripts/inject-failure.sh --scenario cpu|disk|stop-app|stop-redis --confirm LAB_ONLY"
       exit 0
       ;;
     *) die "未知参数: $1" ;;
@@ -62,7 +62,20 @@ case "$SCENARIO" in
     sleep "$DURATION"
     systemctl start opspilot
     ;;
-  *) die "scenario必须是 cpu、disk 或 stop-app" ;;
+  stop-redis)
+    require_root
+    # Linux 发行版常见服务名为 redis 或 redis-server；允许显式覆盖但不拼接执行任意命令。
+    redis_service="${REDIS_SYSTEMD_SERVICE:-redis}"
+    [[ "$redis_service" =~ ^[A-Za-z0-9_.@-]+$ ]] || die "REDIS_SYSTEMD_SERVICE格式非法"
+    systemctl list-unit-files "${redis_service}.service" >/dev/null 2>&1 \
+      || die "未找到Redis systemd单元: ${redis_service}.service"
+    warn "将停止 ${redis_service} ${DURATION} 秒，然后自动启动"
+    systemctl stop "$redis_service"
+    trap 'systemctl start "$redis_service" >/dev/null 2>&1 || true' EXIT
+    sleep "$DURATION"
+    systemctl start "$redis_service"
+    ;;
+  *) die "scenario必须是 cpu、disk、stop-app 或 stop-redis" ;;
 esac
 
 log "故障注入已结束，请观察告警恢复并记录排查过程"

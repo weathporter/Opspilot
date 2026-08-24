@@ -32,12 +32,31 @@ spring:
     # 应用启动时先校验历史迁移，再执行尚未应用的新版本 SQL；失败则拒绝启动。
     enabled: true
   session:
-    # HttpSession 由 MySQL 共享，API 多副本之间不需要粘性会话。
-    store-type: jdbc
+    # HttpSession 由 Redis 共享，API 多副本之间不需要粘性会话，也不占用 MySQL 业务连接。
+    store-type: redis
     timeout: ${SESSION_TIMEOUT:30m}
-    jdbc:
-      # 会话表由 Flyway V2 统一治理，禁止框架在不同环境自行建出不一致的结构。
-      initialize-schema: never
+    redis:
+      # RedisSessionRepository 使用简单键值 + TTL；当前不需要按用户查找全部会话的索引能力。
+      repository-type: default
+      # 固定命名空间把会话与业务缓存隔离，redis-cli/监控排障时也能快速识别数据用途。
+      namespace: northledger:session
+      # 每次请求结束时统一保存被修改的会话，减少同一请求内的重复网络写入。
+      flush-mode: on_save
+  data:
+    redis:
+      repositories:
+        # 项目只使用 Spring Cache、Spring Session 和 RedisTemplate，不定义 Redis Repository；
+        # 关闭仓库扫描可避免 Spring Data 把 JPA Repository 当作 Redis 候选并输出误导性提示。
+        enabled: false
+      # IDEA 默认连接本机；Compose、Linux 和 Kubernetes 用环境变量覆盖，不修改 JAR。
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      # 不提供源码默认密码，防止示例凭据演变成长期可用密码。
+      password: ${REDIS_PASSWORD}
+      # 连接建立和命令响应分别设短超时，Redis 故障时尽快进入可观测降级而不是占满请求线程。
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:1s}
+      timeout: ${REDIS_TIMEOUT:1s}
   jackson:
     # JSON 响应省略 null 字段，例如处理中订单还没有 completedAt。
     default-property-inclusion: non_null
@@ -81,6 +100,13 @@ management:
         enabled: true
       # 不把数据库、磁盘等内部健康细节返回给未认证调用方。
       show-details: never
+      group:
+        readiness:
+          # Redis 承载共享会话，是接收用户流量前的关键依赖；db 与 redis 任一失败都应停止摘流。
+          include: readinessState,db,redis
+        liveness:
+          # 外部依赖抖动不能触发无意义重启；liveness 只观察进程自身状态。
+          include: livenessState
   health:
     livenessstate:
       # liveness 只回答“进程是否需要重启”，不要把短暂外部依赖故障随意加入它。
@@ -120,6 +146,8 @@ logging:
   pattern:
     # 从 MDC 读取 CorrelationIdFilter 写入的 traceId，并添加到每一条请求日志。
     correlation: "[%X{traceId:-}] "
+    # 默认/Linux 文本日志也输出 SLF4J 键值字段；ECS JSON 环境会由结构化编码器原生保留这些字段。
+    level: "%5p %kvp"
   level:
     # 业务包保持 INFO，出现问题时可临时通过环境/启动参数调为 DEBUG，排完后恢复。
     com.opspilot: INFO

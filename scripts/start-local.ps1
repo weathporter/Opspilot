@@ -105,6 +105,13 @@ if (-not $healthy) {
     throw 'Nginx entry did not become healthy within 90 seconds.'
 }
 
+# readiness 可能受健康组配置变化影响，因此再执行一次带认证的 Redis PING，明确验证共享会话依赖。
+$redisPing = docker compose @composeFiles exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
+if ($LASTEXITCODE -ne 0 -or $redisPing -notmatch 'PONG') {
+    docker compose @composeFiles ps
+    throw 'Redis authentication health check failed.'
+}
+
 if ($WithObservability) {
     Write-Host '[5/6] Waiting for every observability entry to become ready'
 
@@ -114,6 +121,7 @@ if ($WithObservability) {
         Prometheus = 'http://localhost:19090/-/ready'
         Alertmanager = 'http://localhost:19093/-/ready'
         Loki = 'http://localhost:13100/ready'
+        RedisExporter = 'http://localhost:19121/metrics'
     }
     foreach ($entry in $observabilityEndpoints.GetEnumerator()) {
         $endpointReady = $false
@@ -144,4 +152,5 @@ if ($WithObservability) {
     Write-Host 'Grafana: http://localhost:13000'
     Write-Host 'Prometheus: http://localhost:19090'
     Write-Host 'Alertmanager: http://localhost:19093'
+    Write-Host 'Redis Exporter metrics: http://localhost:19121/metrics'
 }

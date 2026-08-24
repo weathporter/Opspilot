@@ -2,8 +2,8 @@ apiVersion: v2
 name: northledger
 description: NorthLedger 资金交易与审计平台的 Kubernetes 应用交付 Chart
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.3.0
+appVersion: "0.3.0"
 kubeVersion: ">=1.27.0-0"
 annotations:
   # 本地使用单副本 MySQL，生产覆盖必须切换外部托管数据库并使用预建 Secret。

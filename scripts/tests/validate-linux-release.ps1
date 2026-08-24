@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 静态验证 Linux 原生发布是否同时覆盖 API 与 React 门户。
 
@@ -31,5 +31,14 @@ Assert-Contains 'deploy/linux/nginx/opspilot.conf' 'try_files \$uri \$uri/ /inde
 
 # 没有 index.html 的历史目录不能成为回滚目标，否则会出现 API 正常但页面空白。
 Assert-Contains 'scripts/rollback.sh' 'web/index.html' 'rollback must reject releases without frontend assets'
+
+# Linux 环境必须注入 Redis 地址/密码，巡检和诊断包也要覆盖协议连通与关键运行指标。
+Assert-Contains 'deploy/linux/env/opspilot.env.example' 'REDIS_PASSWORD=CHANGE_ME' 'Linux env template must require a Redis secret'
+Assert-Contains 'deploy/linux/env/redis.env.example' 'REDIS_PASSWORD=CHANGE_ME' 'Redis container must have a dedicated minimal secret file'
+Assert-Contains 'docs/runbooks/linux-deployment.md' '--env-file /etc/opspilot/redis.env' 'Linux Redis container must not receive the full application environment'
+Assert-Contains 'scripts/init-server.sh' 'dnf install[^\r\n]*\bredis\b' 'fresh Rocky Linux hosts must install redis-cli for protocol diagnostics'
+Assert-Contains 'scripts/inspection.sh' 'redis-cli.*--no-auth-warning' 'inspection must perform an authenticated Redis check'
+Assert-Contains 'scripts/inspection.sh' 'read_env_value /etc/opspilot/opspilot.env REDIS_PASSWORD' 'inspection must parse only the Redis password without sourcing the EnvironmentFile'
+Assert-Contains 'scripts/collect-diagnostics.sh' 'INFO server memory stats' 'diagnostics must capture bounded Redis INFO sections'
 
 Write-Output 'Linux release contract passed.'

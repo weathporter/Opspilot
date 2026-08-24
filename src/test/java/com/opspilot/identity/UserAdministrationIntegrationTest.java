@@ -1,6 +1,6 @@
 package com.opspilot.identity;
 
-import com.opspilot.MySqlIntegrationTest;
+import com.opspilot.NorthLedgerIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -20,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class UserAdministrationIntegrationTest extends MySqlIntegrationTest {
+class UserAdministrationIntegrationTest extends NorthLedgerIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
