@@ -48,6 +48,10 @@ alertmanager:
 # kube-state-metrics exposes Kubernetes object states, not application logs.
 prometheus-node-exporter:
   enabled: true
+  # kubeadm taints the control plane. Exporter alone is allowed there so the
+  # dashboard can compare both hosts; business Pods remain on the worker.
+  tolerations:
+    - { key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule }
   resources:
     requests: { cpu: 15m, memory: 24Mi }
     limits: { cpu: 100m, memory: 80Mi }

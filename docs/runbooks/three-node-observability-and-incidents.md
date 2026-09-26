@@ -63,7 +63,7 @@ VM 上的 `127.0.0.1` **不是** Windows 的 `127.0.0.1`。在 FinalShell 为三
 
 ## 4. 验收指标链路
 
-1. `kubectl -n monitoring get pods -o wide`：Prometheus、Alertmanager、Grafana、kube-state-metrics 就绪；node-exporter DaemonSet 对每个节点有 1 个 Pod。
+1. `kubectl -n monitoring get pods -o wide`：Prometheus、Alertmanager、Grafana、kube-state-metrics 就绪；node-exporter DaemonSet 对每个节点有 1 个 Pod。控制平面只为 node-exporter 配了定向污点容忍，业务 Pod 不会因此调度到控制平面。
 2. Prometheus `/targets`：Access、Ledger、Operations **三个 Java Pod** 的 `/actuator/prometheus`、两个 node-exporter、kube-state-metrics 均为 `UP`。Web 是 Nginx，没有 `/actuator/prometheus`；它的可用性看 `kube_deployment_status_replicas_available{deployment="northledger-web"}`、readiness 与用户入口冒烟。若目标缺失，先核对 Pod 注解与发现规则；若 `DOWN`，点开 Last Error，再看 NetworkPolicy/端口/接口响应。
 3. Prometheus 查询 `up{namespace="northledger"}`、`kube_deployment_status_replicas_available{namespace="northledger"}`、`node_memory_MemAvailable_bytes`；无序列时先检查采集组件，不要把“0”与“没数据”混为一谈。
 4. Grafana 打开随仓库发布的 `NorthLedger · Kubernetes operations` 看板，核对期望/可用副本、Target、节点内存与 HTTP 5xx；Explore 选择预置 Prometheus 数据源执行相同查询。看板的 `No data` 不等于数值 0；若 Prometheus 有数而 Grafana 无数，检查数据源 URL、Grafana Pod DNS 和 Service。

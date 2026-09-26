@@ -20,6 +20,10 @@ class MonitoringProfileTest(unittest.TestCase):
         values = yaml.safe_load((MONITORING / "prometheus-values.yaml").read_text(encoding="utf-8"))
         self.assertTrue(values["alertmanager"]["enabled"])
         self.assertTrue(values["prometheus-node-exporter"]["enabled"])
+        self.assertTrue(any(
+            item.get("key") == "node-role.kubernetes.io/control-plane"
+            for item in values["prometheus-node-exporter"]["tolerations"]
+        ))
         self.assertTrue(values["kube-state-metrics"]["enabled"])
         self.assertFalse(values["prometheus-pushgateway"]["enabled"])
         self.assertEqual(values["server"]["service"]["type"], "ClusterIP")
