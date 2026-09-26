@@ -1,0 +1,11 @@
+# Deliberately unsafe test fixture: the deploy gate must reject this profile.
+global:
+  environment: two-node-lab
+services:
+  access: { replicas: 1 }
+  ledger: { replicas: 1 }
+  operations: { replicas: 1 }
+web:
+  replicas: 1
+networkPolicy:
+  enabled: false

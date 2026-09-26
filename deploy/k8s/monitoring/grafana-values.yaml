@@ -1,0 +1,47 @@
+# Two-node lab values for grafana-community/grafana chart 13.2.5.
+# Source of chart keys: https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
+service:
+  type: ClusterIP
+
+# Create this Secret interactively in the monitoring namespace before Helm.
+# No administrator password or auto-generated password is committed to Git.
+admin:
+  existingSecret: northledger-grafana-admin
+  userKey: admin-user
+  passwordKey: admin-password
+
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 300m, memory: 384Mi }
+
+# The datasource is provisioned from Git; dashboards added only in the UI are
+# ephemeral in this low-memory profile, so export them before Pod replacement.
+persistence:
+  enabled: false
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: northledger-prometheus
+        type: prometheus
+        access: proxy
+        url: http://northledger-prometheus.monitoring.svc.cluster.local:80
+        isDefault: true
+        editable: false
+
+# A versioned dashboard is injected with Helm --set-file at install time; this
+# prevents hand-built UI panels disappearing with the ephemeral Grafana Pod.
+# Chart reference: https://github.com/grafana-community/helm-charts/blob/main/charts/grafana/values.yaml
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: NorthLedger
+        type: file
+        disableDeletion: false
+        editable: false
+        options:
+          path: /var/lib/grafana/dashboards/default

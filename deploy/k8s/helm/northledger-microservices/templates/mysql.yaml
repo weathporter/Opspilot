@@ -1,0 +1,121 @@
+# 单实例 MySQL 仅用于实验：StatefulSet/PVC 提供稳定身份与重启后持久化，不提供节点故障 HA。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: northledger-mysql
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: northledger-mysql-init
+data:
+  initdb.sh: |
+    #!/bin/sh
+    set -eu
+    # 密码从 Secret 注入；限制 SQL 字符集后才可安全嵌入一次性建库语句。
+    for value in "$ACCESS_DB_PASSWORD" "$LEDGER_DB_PASSWORD" "$OPERATIONS_DB_PASSWORD"; do
+      printf '%s' "$value" | grep -Eq '^[A-Za-z0-9_-]{24,128}$' || {
+        echo 'Database user passwords must be 24-128 safe ASCII characters' >&2
+        exit 1
+      }
+    done
+    MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot <<SQL
+    CREATE DATABASE IF NOT EXISTS northledger_access CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+    CREATE DATABASE IF NOT EXISTS northledger_ledger CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+    CREATE DATABASE IF NOT EXISTS northledger_operations CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+    CREATE USER IF NOT EXISTS 'nl_access'@'%' IDENTIFIED BY '$ACCESS_DB_PASSWORD';
+    CREATE USER IF NOT EXISTS 'nl_ledger'@'%' IDENTIFIED BY '$LEDGER_DB_PASSWORD';
+    CREATE USER IF NOT EXISTS 'nl_operations'@'%' IDENTIFIED BY '$OPERATIONS_DB_PASSWORD';
+    GRANT ALL PRIVILEGES ON northledger_access.* TO 'nl_access'@'%';
+    GRANT ALL PRIVILEGES ON northledger_ledger.* TO 'nl_ledger'@'%';
+    GRANT ALL PRIVILEGES ON northledger_operations.* TO 'nl_operations'@'%';
+    SQL
+    # /docker-entrypoint-initdb.d 只在空数据目录执行；已有 PVC 的迁移见 Runbook。
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: northledger-mysql
+  labels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+spec:
+  clusterIP: None
+  selector: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+  ports:
+    - { name: mysql, port: 3306, targetPort: mysql, protocol: TCP }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: northledger-mysql
+  labels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+spec:
+  serviceName: northledger-mysql
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+    spec:
+      serviceAccountName: northledger-mysql
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: mysql
+          image: {{ .Values.database.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: mysql, containerPort: 3306, protocol: TCP }
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: mysql-root-password }
+            - name: ACCESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: access-db-password }
+            - name: LEDGER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: ledger-db-password }
+            - name: OPERATIONS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.secretName }}, key: operations-db-password }
+            - { name: TZ, value: Asia/Shanghai }
+          args: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+          resources:
+            {{- toYaml .Values.database.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d/initdb.sh, subPath: initdb.sh, readOnly: true }
+          startupProbe:
+            tcpSocket: { port: mysql }
+            periodSeconds: 5
+            failureThreshold: 40
+          readinessProbe:
+            tcpSocket: { port: mysql }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: { port: mysql }
+            periodSeconds: 15
+            failureThreshold: 4
+      volumes:
+        - name: init
+          configMap: { name: northledger-mysql-init, defaultMode: 0555 }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.database.storageClass | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.database.storageSize }}

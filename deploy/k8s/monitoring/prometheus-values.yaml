@@ -1,0 +1,97 @@
+# Two-node lab values for prometheus-community/prometheus chart 29.33.1.
+# Source of chart keys: https://github.com/prometheus-community/helm-charts/blob/main/charts/prometheus/values.yaml
+# This is intentionally a single Prometheus, not a highly available monitoring system.
+server:
+  # Fixed Service DNS is consumed by the Grafana datasource below.
+  fullnameOverride: northledger-prometheus
+  service:
+    type: ClusterIP
+  global:
+    scrape_interval: 30s
+    evaluation_interval: 30s
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 600m, memory: 768Mi }
+  retention: 2d
+  retentionSize: 1GB
+  # The first lab deployment avoids an unbound monitoring PVC. Metrics will be
+  # lost after Pod replacement; do not present this profile as durable telemetry.
+  persistentVolume:
+    enabled: false
+
+# The stock pod-discovery job honors prometheus.io/scrape, path and port on
+# NorthLedger Pods. Do not create a second job for the same Pods: that would
+# double the time series and make request-rate dashboards misleading.
+scrapeConfigs:
+  kubernetes-nodes:
+    enabled: false
+  kubernetes-nodes-cadvisor:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+
+alertmanager:
+  enabled: true
+  persistence:
+    enabled: false
+  resources:
+    requests: { cpu: 20m, memory: 48Mi }
+    limits: { cpu: 150m, memory: 160Mi }
+
+# Both collectors are approved project scope. node-exporter runs once per node;
+# kube-state-metrics exposes Kubernetes object states, not application logs.
+prometheus-node-exporter:
+  enabled: true
+  resources:
+    requests: { cpu: 15m, memory: 24Mi }
+    limits: { cpu: 100m, memory: 80Mi }
+kube-state-metrics:
+  enabled: true
+  resources:
+    requests: { cpu: 20m, memory: 48Mi }
+    limits: { cpu: 150m, memory: 160Mi }
+prometheus-pushgateway:
+  enabled: false
+
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: northledger-two-node-lab
+        rules:
+          # A Deployment exists, but not all desired Pods are available.
+          - alert: NorthLedgerDeploymentUnavailable
+            expr: kube_deployment_spec_replicas{namespace="northledger",deployment=~"northledger-(access|ledger|operations|web)"} - kube_deployment_status_replicas_available{namespace="northledger",deployment=~"northledger-(access|ledger|operations|web)"} > 0
+            for: 3m
+            labels: { severity: warning, scope: application }
+            annotations:
+              summary: 'NorthLedger Deployment has unavailable replicas'
+              description: 'Inspect kubectl describe deployment, Pod Events, and rollout status before changing replicas or restarting.'
+          # Pod discovery keeps a failed scrape target as up=0 while it exists.
+          - alert: NorthLedgerTargetDown
+            expr: up{job="kubernetes-pods",namespace="northledger"} == 0
+            for: 3m
+            labels: { severity: warning, scope: application }
+            annotations:
+              summary: 'NorthLedger metrics target is unreachable'
+              description: 'Check the target error, Pod readiness, Service/NetworkPolicy and /actuator/prometheus. Target UP alone does not prove the business path works.'
+          - alert: NorthLedgerPodRestartBurst
+            expr: increase(kube_pod_container_status_restarts_total{namespace="northledger",pod=~"northledger-(access|ledger|operations|web).*"}[10m]) > 2
+            for: 1m
+            labels: { severity: warning, scope: application }
+            annotations:
+              summary: 'NorthLedger container restarted repeatedly'
+              description: 'Use kubectl logs --previous and describe pod to distinguish OOMKilled, failed probes and application errors.'
+          # Memory pressure is especially relevant on a small VMware host.
+          - alert: NorthLedgerNodeMemoryLow
+            expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+            for: 5m
+            labels: { severity: warning, scope: node }
+            annotations:
+              summary: 'A Kubernetes node has less than 10 percent available memory'
+              description: 'Inspect node allocation and actual memory use; do not delete data volumes or workloads reflexively.'

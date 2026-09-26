@@ -1,0 +1,100 @@
+# Access 单独存用户与安全审计；它不接触 Ledger 的账户、转账表。
+spring:
+  application:
+    name: northledger-access
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/northledger_access?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:northledger_access}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+  flyway:
+    enabled: true
+  session:
+    store-type: redis
+    timeout: ${SESSION_TIMEOUT:30m}
+    redis:
+      repository-type: default
+      namespace: northledger:session
+      flush-mode: on_save
+  data:
+    redis:
+      repositories:
+        enabled: false
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:default}
+      password: ${REDIS_PASSWORD}
+      connect-timeout: 1s
+      timeout: 1s
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  address: 0.0.0.0
+  port: ${SERVER_PORT:18080}
+  shutdown: graceful
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+northledger:
+  ledger:
+    # 固定服务发现地址由部署配置指定；客户端请求不能覆盖它。
+    base-url: ${LEDGER_BASE_URL:http://localhost:18081}
+  operations:
+    base-url: ${OPERATIONS_BASE_URL:http://localhost:18082}
+  internal:
+    access-token: ${INTERNAL_ACCESS_TOKEN}
+    operations-token: ${INTERNAL_OPERATIONS_TOKEN}
+  security:
+    bootstrap:
+      username: ${BOOTSTRAP_ADMIN_USERNAME:}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+      display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:System Administrator}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db,redis
+        liveness:
+          include: livenessState
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${APP_ENV:local}
+      version: ${APP_VERSION:dev}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+logging:
+  pattern:
+    correlation: "[%X{traceId:-}] "
+    level: "%5p %kvp"

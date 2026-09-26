@@ -5,6 +5,8 @@ import type {
   AuthSession,
   OperationsSummary,
   PlatformUser,
+  ReconciliationDetail,
+  ReconciliationRun,
   Transfer,
   TransferAudit,
   TransferStatus,
@@ -134,6 +136,11 @@ export const transferApi = {
 export const operationsApi = {
   summary: () => request<OperationsSummary>('/api/v1/operations/summary'),
   readiness: () => request<{ status: string }>('/health'),
+  reconciliationRuns: () => request<ReconciliationRun[]>('/api/v1/operations/reconciliations?limit=20'),
+  reconciliationDetail: (id: number) => request<ReconciliationDetail>(`/api/v1/operations/reconciliations/${id}`),
+  runReconciliation: (limit = 100) => request<ReconciliationRun>(
+    `/api/v1/operations/reconciliations?limit=${limit}`, { method: 'POST' },
+  ),
 };
 
 /** 审计员/管理员只读事件查询。 */

@@ -3,16 +3,22 @@
 # 默认排除 Maven target 的全部产物，随后只重新允许 runtime 镜像所需的可执行 JAR。
 target/*
 !target/northledger-*.jar
+services/*/target
 
 # 前端依赖和本地构建缓存体积很大；运行时镜像只复制 frontend/dist。
 frontend/node_modules
 frontend/.vite
+frontend/dist
 
 # 版本控制、IDE 元数据不属于镜像运行内容。
 .git
 .idea
 .vscode
 *.iml
+docs
+output
+*.docx
+*.pdf
 
 # 日志可能含业务信息；.env 可能含密码，绝不能被 COPY 进入镜像构建上下文。
 *.log

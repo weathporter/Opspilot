@@ -1,4 +1,6 @@
-# OpsPilot Kubernetes 交付
+# OpsPilot 旧单体 Kubernetes 交付（兼容路径）
+
+当前微服务主线已迁至 [NorthLedger 两节点发布与验收手册](../../docs/runbooks/two-node-microservices-release.md) 和 `deploy/k8s/helm/northledger-microservices`；资源允许时可按[三节点扩展手册](../../docs/runbooks/three-node-microservices-release.md)实验。以下保留原单体 Minikube/旧实验环境的历史操作，不应与新三服务的资源名、Secret、数据目录或 CI 发布流程混用。
 
 这里不是“放几张 YAML 就算上了 K8s”，而是一套可以安装、升级、回滚、冒烟验证和解释生产边界的 Helm 交付。
 

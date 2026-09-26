@@ -1,0 +1,73 @@
+{
+  "id": null,
+  "uid": "northledger-k8s",
+  "title": "NorthLedger · Kubernetes operations",
+  "description": "Two-node lab: workload readiness, metrics reachability, host memory and HTTP server errors. No data is different from zero.",
+  "tags": ["northledger", "kubernetes", "operations"],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 42,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Desired application replicas",
+      "description": "Expected Access, Ledger, Operations and Web replicas from kube-state-metrics; no data means collection is not proven.",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "northledger-prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_spec_replicas{namespace=\"northledger\",deployment=~\"northledger-(access|ledger|operations|web)\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "colorMode": "none", "graphMode": "none", "justifyMode": "center", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Available application replicas",
+      "description": "A lower value than desired means at least one user-facing Deployment is not fully available.",
+      "gridPos": { "x": 8, "y": 0, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "northledger-prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(kube_deployment_status_replicas_available{namespace=\"northledger\",deployment=~\"northledger-(access|ledger|operations|web)\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "colorMode": "none", "graphMode": "none", "justifyMode": "center", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Business metrics targets UP",
+      "description": "Count of scrapeable NorthLedger Pods; this is not a business transaction success indicator.",
+      "gridPos": { "x": 16, "y": 0, "w": 8, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "northledger-prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum(up{job=\"kubernetes-pods\",namespace=\"northledger\"})", "instant": true }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "options": { "colorMode": "none", "graphMode": "none", "justifyMode": "center", "textMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Node available memory",
+      "description": "Percent of each node's physical memory available to new work; compare with the 10% lab alert threshold.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "northledger-prometheus" },
+      "targets": [{ "refId": "A", "expr": "100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes", "legendFormat": "{{instance}}" }],
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "HTTP 5xx responses per second",
+      "description": "Spring Boot Actuator server-side error rate, by service. Empty until there is traffic; check Targets first.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "northledger-prometheus" },
+      "targets": [{ "refId": "A", "expr": "sum by (application) (rate(http_server_requests_seconds_count{application=~\"northledger-.*\",status=~\"5..\"}[5m]))", "legendFormat": "{{application}}" }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

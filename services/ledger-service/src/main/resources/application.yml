@@ -1,0 +1,68 @@
+# Ledger 是资金事实唯一写入者；配置由环境变量覆盖，仓库不保存可登录密码。
+spring:
+  application:
+    name: northledger-ledger
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/northledger_ledger?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:northledger_ledger}
+    password: ${DB_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  address: 0.0.0.0
+  port: ${SERVER_PORT:18081}
+  shutdown: graceful
+
+northledger:
+  internal:
+    # 空值没有源码默认；漏配 Secret 时服务启动失败，不会匿名开放资金接口。
+    access-token: ${INTERNAL_ACCESS_TOKEN}
+    # Operations 只能读取专用统计接口，不能复用可转账的 Access 凭据。
+    operations-read-token: ${INTERNAL_OPERATIONS_READ_TOKEN}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        readiness:
+          include: readinessState,db
+        liveness:
+          include: livenessState
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${APP_ENV:local}
+      version: ${APP_VERSION:dev}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+logging:
+  pattern:
+    correlation: "[%X{traceId:-}] "
+    level: "%5p %kvp"

@@ -29,6 +29,7 @@ public class BootstrapAdministrator implements ApplicationRunner {
 
     private final BootstrapAdministratorProperties properties;
     private final AppUserRepository appUserRepository;
+    private final BootstrapClaimRepository bootstrapClaimRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditEventService auditEventService;
     private final Clock clock;
@@ -36,12 +37,14 @@ public class BootstrapAdministrator implements ApplicationRunner {
     public BootstrapAdministrator(
             BootstrapAdministratorProperties properties,
             AppUserRepository appUserRepository,
+            BootstrapClaimRepository bootstrapClaimRepository,
             PasswordEncoder passwordEncoder,
             AuditEventService auditEventService,
             Clock clock
     ) {
         this.properties = properties;
         this.appUserRepository = appUserRepository;
+        this.bootstrapClaimRepository = bootstrapClaimRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditEventService = auditEventService;
         this.clock = clock;
@@ -66,6 +69,8 @@ public class BootstrapAdministrator implements ApplicationRunner {
         }
 
         String username = properties.username().trim().toLowerCase(Locale.ROOT);
+        // 原 Helm 路径的两个 API Pod 也可能并发启动；固定行锁在本事务提交前保持互斥。
+        bootstrapClaimRepository.acquire();
         // 引导只允许初始化空身份库；库中已有任何用户后，改环境变量也不能借此追加高权限账号。
         if (appUserRepository.count() > 0) {
             logger.atInfo()

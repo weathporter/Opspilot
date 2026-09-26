@@ -24,6 +24,10 @@ frontend/.vite/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 
+# Python 只用于本地配置校验；字节码缓存不是项目源码。
+__pycache__/
+*.pyc
+
 # 本地包缓存、离线镜像、验收截图和文档构建产物体积较大，均可重新生成。
 .npm-cache/
 dist/
