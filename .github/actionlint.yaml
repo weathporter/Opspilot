@@ -1,0 +1,4 @@
+# 发布机有专用标签；静态检查时显式登记，避免把自定义 runner 误判为拼写错误。
+self-hosted-runner:
+  labels:
+    - northledger-deploy

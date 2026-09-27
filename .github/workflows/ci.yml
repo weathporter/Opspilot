@@ -2,7 +2,8 @@ name: NorthLedger CI
 
 on:
   push:
-    branches: [main]
+    # 功能分支也运行完整验证；发布镜像和部署仍仅允许受保护 main。
+    branches: [main, 'feat/**']
   pull_request:
 
 # 默认只读仓库内容；CI 不需要写包、改代码或读取环境 Secret。
@@ -87,3 +88,150 @@ jobs:
         run: |
           docker build --build-arg APP_VERSION=${{ github.sha }} -t northledger-api:${{ github.sha }} .
           docker build -f frontend/Dockerfile -t northledger-web:${{ github.sha }} .
+
+  # 新架构的三个后端各自编译和测试，失败时能直接定位责任服务。
+  verify-microservices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [access, ledger, operations]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - name: Test independent service
+        run: mvn -B -ntp -f services/${{ matrix.service }}-service/pom.xml test
+
+  verify-microservices-chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.6
+      - name: Lint and render three-node Helm release
+        shell: pwsh
+        run: ./scripts/tests/validate-microservices-chart.ps1
+
+      # 两节点是内存较小的实际演示档位；渲染检查避免只在 README 声称可部署。
+      - name: Lint and render two-node lab profile
+        shell: pwsh
+        run: |
+          ./scripts/tests/validate-two-node-profile.ps1
+          ./scripts/tests/test-two-node-profile-gate.ps1
+
+      - name: Check monitoring profile contract
+        run: |
+          python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+          python3 scripts/tests/validate-k8s-monitoring.py
+          python3 scripts/tests/test_monitoring_render_check.py
+
+      # Pin upstream chart versions so a future chart upgrade cannot silently
+      # change the monitoring release during an unrelated application commit.
+      - name: Render pinned Kubernetes monitoring charts
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana-community https://grafana-community.github.io/helm-charts
+          helm repo update
+          helm template northledger-metrics prometheus-community/prometheus \
+            --version 29.33.1 --namespace monitoring \
+            -f deploy/k8s/monitoring/prometheus-values.yaml > /tmp/northledger-prometheus.yaml
+          helm template northledger-grafana grafana-community/grafana \
+            --version 13.2.5 --namespace monitoring \
+            -f deploy/k8s/monitoring/grafana-values.yaml \
+            --set-file dashboards.default.northledger.json=deploy/k8s/monitoring/northledger-dashboard.json \
+            > /tmp/northledger-grafana.yaml
+          python3 scripts/tests/monitoring_render_check.py \
+            /tmp/northledger-prometheus.yaml /tmp/northledger-grafana.yaml \
+            /tmp/northledger-alerts.yml
+          docker run --rm --entrypoint /bin/promtool \
+            -v /tmp/northledger-alerts.yml:/etc/prometheus/alerting_rules.yml:ro \
+            prom/prometheus:v3.15.0 check rules /etc/prometheus/alerting_rules.yml
+
+  build-microservice-images:
+    needs: [verify, verify-microservices, verify-microservices-chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [access, ledger, operations, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build independent immutable image without publishing on PR
+        run: |
+          if [ "${{ matrix.component }}" = web ]; then
+            docker build -f frontend/Dockerfile --build-arg APP_VERSION=${{ github.sha }} \
+              -t northledger-web:${{ github.sha }} .
+          else
+            docker build -f services/${{ matrix.component }}-service/Dockerfile \
+              --build-arg APP_VERSION=${{ github.sha }} \
+              -t northledger-${{ matrix.component }}:${{ github.sha }} .
+          fi
+
+  # 仅受保护 main 的同一次 CI 全绿后发布；PR 没有 packages:write 和部署密钥。
+  publish-images:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-microservice-images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { component: access, dockerfile: services/access-service/Dockerfile }
+          - { component: ledger, dockerfile: services/ledger-service/Dockerfile }
+          - { component: operations, dockerfile: services/operations-service/Dockerfile }
+          - { component: web, dockerfile: frontend/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish only the verified commit SHA
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ghcr.io/weathporter/opspilot-${{ matrix.component }}:${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: APP_VERSION=${{ github.sha }}
+
+  # GitHub Environment 必须由仓库管理员设置审核人；Windows 自托管 runner 位于可达集群的管理机。
+  deploy-two-node-lab:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [publish-images]
+    runs-on: [self-hosted, windows, northledger-deploy]
+    environment: two-node-lab
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    concurrency:
+      group: northledger-two-node-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy exact SHA, smoke through browser path, rollback on smoke failure
+        shell: pwsh
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+          SMOKE_USERNAME: ${{ secrets.SMOKE_USERNAME }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          # 默认使用仓库内的低资源档位；自定义文件必须完整继承二节点副本配置。
+          NORTHLEDGER_VALUES_FILE: ${{ vars.NORTHLEDGER_VALUES_FILE || 'deploy/k8s/helm/northledger-microservices/values-two-node-lab.yaml' }}
+        run: |
+          ./scripts/tests/validate-two-node-profile.ps1 -ValuesFile $env:NORTHLEDGER_VALUES_FILE
+          ./scripts/k8s/deploy-microservices.ps1 -Sha '${{ github.sha }}' -Namespace northledger

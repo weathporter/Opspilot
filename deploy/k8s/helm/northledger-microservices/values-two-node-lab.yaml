@@ -1,0 +1,16 @@
+# 15 GiB 宿主机的入门部署档位：一个控制平面 + 一个工作节点。
+# 单工作节点上的两个副本不能抵抗节点故障；先用单副本完成业务和发布闭环。
+# 需要观察 Deployment 扩容时，可临时只扩某一个无状态服务，再根据内存退回。
+global:
+  environment: two-node-lab
+
+services:
+  access:
+    replicas: 1
+  ledger:
+    replicas: 1
+  operations:
+    replicas: 1
+
+web:
+  replicas: 1

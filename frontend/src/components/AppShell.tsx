@@ -9,6 +9,7 @@ import {
   Menu,
   Network,
   ReceiptText,
+  Scale,
   SendHorizontal,
   ShieldCheck,
   UsersRound,
@@ -33,6 +34,7 @@ const navigation: NavigationItem[] = [
   { to: '/accounts', label: '账户管理', shortLabel: '账户', icon: Building2, roles: ['ADMIN', 'OPERATOR', 'AUDITOR'] },
   { to: '/transfers', label: '交易管理', shortLabel: '交易', icon: SendHorizontal, roles: ['ADMIN', 'OPERATOR', 'AUDITOR'] },
   { to: '/ledger', label: '流水核验', shortLabel: '流水', icon: ReceiptText, roles: ['ADMIN', 'OPERATOR', 'AUDITOR'] },
+  { to: '/reconciliation', label: '批次对账', shortLabel: '对账', icon: Scale, roles: ['ADMIN', 'OPERATOR', 'AUDITOR'] },
   { to: '/audit', label: '安全审计', shortLabel: '审计', icon: BookOpenCheck, roles: ['ADMIN', 'AUDITOR'] },
   { to: '/users', label: '用户与权限', shortLabel: '用户', icon: UsersRound, roles: ['ADMIN'] },
   { to: '/system', label: '系统运行', shortLabel: '运行', icon: Activity, roles: ['ADMIN', 'OPERATOR', 'AUDITOR'] },
@@ -43,6 +45,7 @@ const pageTitles: Record<string, { title: string; description: string }> = {
   '/accounts': { title: '账户管理', description: '开户、余额与账户状态' },
   '/transfers': { title: '交易管理', description: '转账处理、幂等重试与订单查询' },
   '/ledger': { title: '流水核验', description: '订单与双边账务流水证据' },
+  '/reconciliation': { title: '批次对账', description: '最近交易抽样核验与差异追踪' },
   '/audit': { title: '安全审计', description: '登录、越权和管理操作追溯' },
   '/users': { title: '用户与权限', description: '平台用户和职责角色治理' },
   '/system': { title: '系统运行', description: '探针、监控入口与部署状态' },
@@ -114,8 +117,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="side-navigation__context">
           <div><Network size={16} /><span>部署环境</span></div>
-          <strong>LOCAL / COMPOSE</strong>
-          <small>API · MySQL · Observability</small>
+          <strong>NorthLedger</strong>
+          <small>实际环境以“系统运行”页探针为准</small>
         </div>
       </aside>
 

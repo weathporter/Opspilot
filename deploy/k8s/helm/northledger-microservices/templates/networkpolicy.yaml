@@ -1,0 +1,111 @@
+{{- if .Values.networkPolicy.enabled }}
+# 仅限制入站；服务出站仍需 DNS、MySQL、Redis 等。内部服务还会检查 Secret 凭据。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-default-deny-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger }
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-web-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: web }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ protocol: TCP, port: 8080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-access-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: access }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: web }
+      ports: [{ protocol: TCP, port: 18080 }]
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | quote }} }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: {{ .Values.networkPolicy.monitoringPodLabel | quote }} }
+      ports: [{ protocol: TCP, port: 18080 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-ledger-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: ledger }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: access }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: operations }
+      ports: [{ protocol: TCP, port: 18081 }]
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | quote }} }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: {{ .Values.networkPolicy.monitoringPodLabel | quote }} }
+      ports: [{ protocol: TCP, port: 18081 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-operations-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: operations }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: access }
+      ports: [{ protocol: TCP, port: 18082 }]
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace | quote }} }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: {{ .Values.networkPolicy.monitoringPodLabel | quote }} }
+      ports: [{ protocol: TCP, port: 18082 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-mysql-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: mysql }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: access }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: ledger }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: operations }
+      ports: [{ protocol: TCP, port: 3306 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: northledger-redis-ingress }
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: redis }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: access }
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: northledger, app.kubernetes.io/component: operations }
+      ports: [{ protocol: TCP, port: 6379 }]
+{{- end }}

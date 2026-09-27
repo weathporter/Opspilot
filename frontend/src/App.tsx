@@ -8,6 +8,7 @@ import { AuditEventsPage } from './pages/AuditEventsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LedgerPage } from './pages/LedgerPage';
 import { LoginPage } from './pages/LoginPage';
+import { ReconciliationPage } from './pages/ReconciliationPage';
 import { SystemPage } from './pages/SystemPage';
 import { TransfersPage } from './pages/TransfersPage';
 import { UsersPage } from './pages/UsersPage';
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="transfers" element={<TransfersPage />} />
           <Route path="ledger" element={<LedgerPage />} />
+          <Route path="reconciliation" element={<ReconciliationPage />} />
           <Route element={<RoleGate roles={['ADMIN', 'AUDITOR']} />}>
             <Route path="audit" element={<AuditEventsPage />} />
           </Route>

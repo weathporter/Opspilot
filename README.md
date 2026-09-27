@@ -1,10 +1,12 @@
 # NorthLedger
 
-NorthLedger 是一个可真实运行的企业资金账户与交易平台。它以“开户 → 转账 → 余额变更 → 双边账务流水 → 安全审计”为业务主线，并把 Linux、Docker Compose、Kubernetes/Helm、MySQL、持续集成、监控告警、备份恢复、发布回滚和故障排查放在同一条交付链上。
+NorthLedger 是一个以资金账户、交易和对账为业务场景的运维实践项目。当前仓库同时保留原来的模块化单体（Compose/本地教学路径）和新的三服务架构（三节点 Kubernetes 实验路径）。后者包含独立的 Access、Ledger、Operations 服务与 Web 前端，以及 GitHub Actions → GHCR → 受保护 Helm 发布 → 冒烟 → 回滚的交付链。**仓库中的配置和测试不等于三台虚拟机已经完成部署；集群实测证据需在实际操作后补充。**
 
 这个项目的重点不是展示组件数量，而是回答三个企业项目问题：业务数据是否一致、每次操作是否可追溯、系统出现故障后能否定位和恢复。
 
-## 已实现的完整闭环
+## 业务闭环与本地兼容实现
+
+以下业务与安全链路最先在原单体实现；三服务路径保留浏览器 API 并把数据所有权按服务拆分。运行相关结果以实际测试和集群验收为准。
 
 ### 业务闭环
 
@@ -47,30 +49,30 @@ NorthLedger 采用企业资金平台常见的深海军蓝导航、白色业务�
   ▼
 Nginx :18000
   ├─ React 静态资源
-  ├─ /api → Spring Boot :18080
+  ├─ /api → Access :18080 ──内部凭据──▶ Ledger :18081
+  │                           └──────────▶ Operations :18082 ──只读──▶ Ledger
   └─ /health → readiness
                  │
-                 ├─ Spring Security / RBAC / Audit
-                  ├─ Account / Transfer / Ledger ──业务事实──▶ MySQL :3306
-                  └─ Session / Dashboard cache ──临时状态──▶ Redis :6379
+                 ├─ Access：Spring Security / RBAC / Audit / Redis Session
+                 ├─ Ledger：账户、转账、订单、双边流水（单个本地事务）
+                 └─ Operations：运行总览、对账执行与历史、Redis 短时缓存
+
+三服务分别使用 northledger_access、northledger_ledger、northledger_operations 逻辑库和独立数据库账号；共享 MySQL 实例不意味着共享业务表。浏览器不能直接访问内部服务。
 
 Spring Boot / Host / Container ──指标──▶ Prometheus ──▶ Grafana / Alertmanager
 Application / Container ─────────日志──▶ Alloy ──▶ Loki ──▶ Grafana
 ```
 
-## 模块边界
+## 服务边界
 
-| 模块 | 负责什么 | 不负责什么 |
+| 服务 | 负责什么 | 不负责什么 |
 | --- | --- | --- |
-| `identity` | 用户、角色、状态、密码哈希、首个管理员 | 账户余额和交易规则 |
-| `security` | 认证过滤链、会话、CSRF、401/403 | 业务数据判断 |
-| `audit` | 安全与管理操作证据、按权限查询 | 修改历史事件 |
-| `account` | 开户、余额、账户状态 | 认证实现 |
-| `transfer` | 幂等、并发锁、事务、订单和双录流水 | 用户管理 |
-| `dashboard` | 组合业务与运行读模型 | 写资金数据 |
-| `observability` | traceId、指标和结构化日志 | 保存业务事实 |
+| `services/access-service` | 用户、登录、Redis 会话、CSRF、RBAC、安全审计、对外 API | 直接修改资金表 |
+| `services/ledger-service` | 账户、幂等转账、订单和双边流水；只读统计/对账候选接口 | 用户与角色 |
+| `services/operations-service` | 总览缓存、对账执行与结果历史 | 写入账户、订单或流水 |
+| `frontend` | React 页面、同源访问、对账交互 | 代替后端做权限判断 |
 
-继续采用模块化单体：当前账户、转账和流水属于同一事务边界，一个可部署单元更容易保证一致性。只有模块出现独立发布、独立扩缩容或不同可用性目标时，才有充分理由拆成微服务。
+资金写入没有跨服务分布式事务：账户、订单、借贷流水仍在 Ledger 的一个 MySQL 事务里。原 `src/` 单体路径保留为可运行的对照和兼容实现；新服务不读取它的数据库表。分库迁移不会自动搬运旧数据，见[三节点发布与迁移手册](docs/runbooks/three-node-microservices-release.md)。
 
 ## 技术栈
 
@@ -87,7 +89,7 @@ Application / Container ─────────日志──▶ Alloy ──�
 
 Redis 只解决两个已经落地的问题：多副本共享会话，以及运行总览的重复聚合读；账户余额、交易订单、流水和审计仍以 MySQL 为唯一事实来源。项目没有加入 Kafka、Milvus、Service Mesh 或多集群，因为当前业务没有需要它们解决的真实问题。
 
-## 本地完整启动
+## 本地兼容路径（原模块化单体）
 
 要求：Docker Desktop 已启动，宿主机安装 Java 17、Maven 和 Node.js 20 或更高版本（CI 与前端镜像使用 Node 22）。
 
@@ -119,7 +121,15 @@ powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1 -WithObservabil
 
 密码没有源码默认值，这是为了让“开发方便”不会意外变成“部署后仍使用公开密码”。
 
-## Kubernetes/Helm 实践
+## Kubernetes 微服务路径：两节点优先，三节点可扩展
+
+当前主线的 K8s 交付物位于 `services/{access,ledger,operations}-service`、`deploy/k8s/helm/northledger-microservices`、`deploy/k8s/storage` 和 `scripts/k8s/*-microservices.ps1`。考虑到开发机约 15 GiB 物理内存，**实际演示先用 1 个控制平面 + 1 个 worker**：`values-two-node-lab.yaml` 让四个无状态组件各 1 副本，MySQL/Redis 的 Local PV 均位于 `nl-worker1`。默认 values 仍保留 1 控制平面 + 2 worker、四组件各 2 副本的扩展档位。两种档位的单控制平面、单副本数据库和 Local PV 都不是生产高可用。PV、Secret、Ingress Controller、CNI 网络策略能力和可用 GHCR 镜像必须先准备，Helm 不会创建 VM。
+
+当前优先按[两节点微服务部署手册](docs/runbooks/two-node-microservices-release.md)操作；[VMware 创建与复用步骤](docs/runbooks/two-node-vmware-creation.md)由操作者亲自执行。内存条件允许后再看[三节点扩展方案](docs/runbooks/three-node-microservices-release.md)。对外接口和服务凭据契约见[微服务接口契约](docs/architecture/microservice-contracts.md)，集群内监控安装、故障调查与证据记录见[运维故障教学](docs/runbooks/three-node-observability-and-incidents.md)。这套两节点方案的配置与本地检查不等于虚拟机内实际部署已验收。
+
+这条路径与下面的历史 Minikube/单体教学路径并存，不能把一次 Minikube 演练等同于两节点或三节点微服务实测。
+
+### 历史 Minikube / 单体教学路径
 
 要求：Docker Desktop、Minikube、kubectl 和 Helm。
 
@@ -150,7 +160,17 @@ helm lint deploy/k8s/helm/opspilot `
   --set-string secrets.bootstrapAdminPassword=test-bootstrap-password
 ```
 
-持续集成执行同一组后端测试、前端依赖门禁、前端生产构建、Helm 校验和 API/Web 镜像构建。
+新增三个服务的独立测试与四镜像构建/发布校验：
+
+```powershell
+mvn -B -ntp -f services/access-service/pom.xml test
+mvn -B -ntp -f services/ledger-service/pom.xml test
+mvn -B -ntp -f services/operations-service/pom.xml test
+helm lint deploy/k8s/helm/northledger-microservices
+powershell -ExecutionPolicy Bypass -File scripts/tests/validate-microservices-chart.ps1
+```
+
+本地 `test` 的集成测试需要 Docker Desktop；旧单体与新三服务的测试独立执行。GitHub Actions 在 PR 执行旧单体回归、三服务测试、前端构建与四镜像构建；仅 main 全绿时发布同一提交 SHA 的镜像，实际 Helm 部署还取决于受保护环境审核和自托管 runner。
 
 ## 推荐阅读顺序
 
@@ -167,13 +187,16 @@ helm lint deploy/k8s/helm/opspilot `
 ## 目录结构
 
 ```text
-src/main/java/                 后端业务、安全、审计和观测代码
-src/main/resources/db/        只追加的 Flyway 数据库迁移
-src/test/                      单元测试和真实 MySQL/Redis 集成测试
+src/                           原单体：Compose/Minikube 兼容路径与回归测试
+services/access-service/       认证、Redis Session、RBAC、审计、公开 API
+services/ledger-service/       资金事实、事务、幂等转账、流水
+services/operations-service/   总览、对账运行及历史
 frontend/                      React/TypeScript 业务门户
 deploy/docker/                 容器入口与 Nginx
 deploy/linux/                  systemd、Nginx、环境和 logrotate
 deploy/k8s/helm/opspilot/      Kubernetes Helm Chart
+deploy/k8s/helm/northledger-microservices/   三服务 Helm Chart
+deploy/k8s/storage/            三节点静态 Local PV 声明
 observability/                 Prometheus、Grafana、日志与告警配置
 scripts/                       构建、发布、回滚、备份、巡检和演练
 docs/                          架构、Runbook、学习与故障材料
@@ -182,6 +205,6 @@ docs/                          架构、Runbook、学习与故障材料
 
 ## 简历可陈述边界
 
-可以基于真实代码和验证结果说明：完成资金账户、幂等转账和双录流水业务闭环；使用 Spring Security、Redis 会话和 RBAC 建立访问控制；为运行总览设计短 TTL、事务提交后失效和 Redis 故障回源；使用 Docker Compose 与 Helm 交付；通过指标、日志、告警、备份恢复和发布回滚形成运维闭环。
+可以基于真实代码和验证结果说明：将单体按认证入口、资金账务和运行对账拆为三个独立服务；保留资金写入本地事务和 Redis 会话/CSRF；使用 Helm 定义双副本服务、有状态存储与网络隔离；用 GitHub Actions 对每个服务测试并发布确定的 SHA 镜像。只有亲自完成三节点发布、故障演练和恢复后，才可在简历中写“在三节点集群部署并验证闭环”。
 
 不应把单机 MySQL/Minikube 描述成生产高可用集群，也不应在未亲自复现前把配置文件等同于熟练掌握。建议按“能解释原理 → 能独立启动 → 能制造并排除故障 → 能脱离文档复述”的顺序完成个人验收。

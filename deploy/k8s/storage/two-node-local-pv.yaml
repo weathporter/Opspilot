@@ -1,0 +1,47 @@
+# 与 three-node-local-pv.yaml 二选一；同名 PV 不能重复创建或靠 apply 改节点亲和性。
+# 两个目录都在 nl-worker1，教学上可验证持久化，但该节点故障时二者均不可用。
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: { name: northledger-local-mysql }
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: { name: northledger-local-redis }
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: { name: northledger-mysql-local-pv }
+spec:
+  capacity: { storage: 5Gi }
+  volumeMode: Filesystem
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: northledger-local-mysql
+  local: { path: /var/lib/northledger/mysql }
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - { key: kubernetes.io/hostname, operator: In, values: [nl-worker1] }
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata: { name: northledger-redis-local-pv }
+spec:
+  capacity: { storage: 1Gi }
+  volumeMode: Filesystem
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: northledger-local-redis
+  local: { path: /var/lib/northledger/redis }
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - { key: kubernetes.io/hostname, operator: In, values: [nl-worker1] }

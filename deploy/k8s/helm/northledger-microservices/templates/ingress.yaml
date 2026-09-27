@@ -1,0 +1,26 @@
+{{- if .Values.ingress.enabled }}
+# 只有 Web 作为外部入口；Ledger/Operations 没有 NodePort、Ingress 或外部 LoadBalancer。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: northledger-web
+  labels:
+    {{- include "northledger.labels" . | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- if .Values.ingress.tlsSecretName }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: northledger-web
+                port: { name: http }
+{{- end }}

@@ -30,7 +30,14 @@ public record TransferAuditResponse(
                 .map(LedgerEntry::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        boolean balanced = ledgerEntries.size() == 2 && debit.compareTo(credit) == 0;
+        // 保留旧部署路径时也使用相同校验，避免两笔等额但与订单金额不符的流水被误判为平衡。
+        boolean balanced = ledgerEntries.size() == 2
+                && debit.compareTo(order.getAmount()) == 0
+                && credit.compareTo(order.getAmount()) == 0
+                && ledgerEntries.stream().anyMatch(entry -> entry.getEntryType() == LedgerEntryType.DEBIT
+                        && entry.getAccountNo().equals(order.getSourceAccountNo()))
+                && ledgerEntries.stream().anyMatch(entry -> entry.getEntryType() == LedgerEntryType.CREDIT
+                        && entry.getAccountNo().equals(order.getTargetAccountNo()));
         return new TransferAuditResponse(TransferResponse.from(order), entries, balanced);
     }
 }

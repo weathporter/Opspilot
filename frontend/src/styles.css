@@ -423,6 +423,18 @@ strong { font-weight: 650; }
 .audit-intro strong { color: var(--green-600); font-size: 12px; }
 .audit-intro span { margin-top: 2px; color: var(--ink-500); font-size: 11px; }
 
+/* 对账页复用既有表格层级，同时让批次操作、差异证据和空状态一眼可区分。 */
+.reconciliation-intro { border-left-color: var(--blue-600); background: var(--blue-50); }
+.reconciliation-intro strong { color: var(--blue-700); }
+.reconciliation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.reconciliation-table { min-width: 710px; }
+.reconciliation-detail-button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--blue-700); font-weight: 650; }
+.reconciliation-detail-button:hover { text-decoration: underline; }
+.reconciliation-discrepancies { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.reconciliation-discrepancies li { display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 14px 22px; border-top: 1px solid var(--line-200); color: var(--ink-700); font-size: 12px; }
+.reconciliation-discrepancies li .mono { color: var(--red-600); }
+.reconciliation-empty { padding: 18px 22px 24px; color: var(--ink-500); font-size: 12px; }
+
 /* 系统运行页明确区分实时探针和静态交付能力。 */
 .system-hero { display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 18px; border: 1px solid #bbf7d0; border-radius: var(--radius-md); background: var(--green-50); }
 .system-hero__signal { display: grid; width: 50px; height: 50px; place-items: center; border: 1px solid #86efac; border-radius: 50%; color: var(--green-600); }

@@ -37,10 +37,11 @@ export function SystemPage() {
   // 13000/19090/19093 是宿主机 Compose 映射端口，不应在 Kubernetes 页面冒充集群监控入口。
   const isComposeEnvironment = environment === 'compose';
 
+  // 这里展示仓库中的交付能力，不代表当前集群已经安装并运行了这些组件。
   const capabilities = [
     { icon: Container, title: '容器化基线', text: '非 root、只读文件系统、健康检查、优雅停机' },
-    { icon: Boxes, title: 'Kubernetes / Helm', text: '双副本、Ingress、探针、HPA、PDB、NetworkPolicy' },
-    { icon: GitBranch, title: '发布与回滚', text: '版本化镜像、滚动升级、失败阻断、一键回滚' },
+    { icon: Boxes, title: 'Kubernetes / Helm', text: '独立服务、双副本、Ingress、探针、PDB、NetworkPolicy' },
+    { icon: GitBranch, title: '发布与回滚', text: '提交 SHA 镜像、滚动升级、冒烟验证、失败回滚' },
     { icon: BellRing, title: '监控与告警', text: 'Prometheus、Grafana、Alertmanager、Loki、Alloy' },
     { icon: FileClock, title: '备份与排障', text: 'MySQL 备份恢复、诊断收集、故障演练、Runbook' },
     { icon: ServerCog, title: 'Linux 原生部署', text: 'systemd、Nginx、logrotate、Shell 自动化脚本' },
@@ -79,9 +80,9 @@ export function SystemPage() {
         </div>
       </section>
 
-      <section className="architecture-flow" aria-label="请求链路">
-        {['浏览器', 'Nginx / Ingress', 'Spring Boot', 'MySQL', 'Prometheus / Loki'].map((node, index) => (
-          <div key={node}><span>{index + 1}</span><strong>{node}</strong>{index < 4 && <i aria-hidden="true" />}</div>
+      <section className="architecture-flow" aria-label="三服务请求链路">
+        {['浏览器', 'Web / Ingress', 'Access', 'Ledger / Operations', 'MySQL / Redis'].map((node, index, nodes) => (
+          <div key={node}><span>{index + 1}</span><strong>{node}</strong>{index < nodes.length - 1 && <i aria-hidden="true" />}</div>
         ))}
       </section>
     </div>

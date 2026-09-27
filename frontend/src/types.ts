@@ -63,6 +63,20 @@ export interface OperationsSummary {
   recentTransfers: Transfer[];
 }
 
+/** Operations 独立保存的最近交易抽样对账批次，不代表全库历史已经核验。 */
+export interface ReconciliationRun {
+  id: number;
+  completedAt: string;
+  checkedCount: number;
+  discrepancyCount: number;
+  status: 'BALANCED' | 'DISCREPANCY';
+}
+
+/** 单批次详情仅保存不平衡交易的 requestId，用于回到双边流水页进一步取证。 */
+export interface ReconciliationDetail extends ReconciliationRun {
+  discrepancyRequestIds: string[];
+}
+
 /** Spring ProblemDetail 扩展响应，用于把后端业务错误转换为可读表单提示。 */
 export interface ApiProblem {
   title?: string;
